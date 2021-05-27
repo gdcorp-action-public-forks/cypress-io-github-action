@@ -1,5 +1,6 @@
 const core = require('@actions/core')
 const got = require('got')
+const debug = require('debug')('@cypress/github-action')
 
 /**
  * A small utility for checking when an URL responds, kind of
@@ -18,11 +19,16 @@ const ping = (url, timeout) => {
   // we expect the server to respond within a time limit
   // and if it does not - retry up to total "timeout" duration
   const individualPingTimeout = Math.min(timeout, 30000)
+
+  // add to the timeout max individual ping timeout
+  // to avoid long-waiting ping from "rolling" over the end
+  // and preventing pinging the last time
+  timeout += individualPingTimeout
   const limit = Math.ceil(timeout / individualPingTimeout)
 
-  core.debug(`total ping timeout ${timeout}`)
-  core.debug(`individual ping timeout ${individualPingTimeout}ms`)
-  core.debug(`retries limit ${limit}`)
+  debug(`total ping timeout ${timeout}`)
+  debug(`individual ping timeout ${individualPingTimeout}ms`)
+  debug(`retries limit ${limit}`)
 
   const start = +new Date()
   return got(url, {
@@ -35,19 +41,21 @@ const ping = (url, timeout) => {
       limit,
       calculateDelay({ error, attemptCount }) {
         if (error) {
-          core.debug(`got error ${JSON.stringify(error)}`)
+          debug(`got error ${JSON.stringify(error)}`)
         }
         const now = +new Date()
         const elapsed = now - start
-        core.debug(
+        debug(
           `${elapsed}ms ${error.method} ${error.host} ${error.code} attempt ${attemptCount}`
         )
         if (elapsed > timeout) {
           console.error(
-            '%s timed out on retry %d of %d',
+            '%s timed out on retry %d of %d, elapsed %dms, limit %dms',
             url,
             attemptCount,
-            limit
+            limit,
+            elapsed,
+            timeout
           )
           return 0
         }
@@ -65,7 +73,7 @@ const ping = (url, timeout) => {
   }).then(() => {
     const now = +new Date()
     const elapsed = now - start
-    core.debug(`pinging ${url} has finished ok after ${elapsed}ms`)
+    debug(`pinging ${url} has finished ok after ${elapsed}ms`)
   })
 }
 
