@@ -21,6 +21,7 @@
 - Set Cypress [config values](#config)
 - Use specific [config file](#config-file)
 - Run tests in [parallel](#parallel)
+- Run E2E and [Component tests](#component-tests)
 - [Build app](#build-app) before running the tests
 - [Start server](#start-server) before running the tests
 - [Start multiple servers](#start-multiple-servers) before running the tests
@@ -29,12 +30,16 @@
 - use [command prefix](#command-prefix)
 - use [own custom test command](#custom-test-command)
 - pass [custom build id](#custom-build-id) when recording to Dashboard
+- generate a [robust custom build id](#robust-custom-build-id) to allow re-running the workflow
 - use different [working-directory](#working-directory)
 - use [custom cache key](#custom-cache-key)
 - run tests on multiple [Node versions](#node-versions)
 - split [install and tests](#split-install-and-tests) into separate jobs
 - use [custom install commands](#custom-install)
 - install [only Cypress](#install-cypress-only) to avoid installing all dependencies
+- [timeouts](#timeouts) to avoid hanging CI jobs
+- [print Cypress info](#print-cypress-info) like detected browsers
+- [run tests nightly](#nightly-tests) or on any schedule
 - [more examples](#more-examples)
 
 ### Basic
@@ -44,7 +49,7 @@ name: End-to-end tests
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -89,7 +94,7 @@ name: E2E on Chrome
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     # let's make sure our tests pass on Chrome browser
     name: E2E on Chrome
     steps:
@@ -153,7 +158,7 @@ name: Chrome headless
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
@@ -171,7 +176,7 @@ name: E2E in custom container
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     # Cypress Docker image with Chrome v78
     # and Firefox v70 pre-installed
     container: cypress/browsers:node12.13.0-chrome78-ff70
@@ -191,7 +196,7 @@ name: Cypress tests
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -209,7 +214,7 @@ name: Cypress tests
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -235,7 +240,7 @@ on: [push]
 jobs:
   cypress-run:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -266,7 +271,7 @@ on: [push]
 jobs:
   cypress-run:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -286,7 +291,7 @@ on: [push]
 jobs:
   cypress-run:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -384,7 +389,7 @@ name: Artifacts
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     name: Artifacts
     steps:
       - uses: actions/checkout@v2
@@ -418,7 +423,7 @@ on: [push]
 jobs:
   cypress-run:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -441,7 +446,7 @@ on: [push]
 jobs:
   cypress-run:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -466,7 +471,7 @@ on: [push]
 jobs:
   test:
     name: Cypress run
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     strategy:
       # when one test fails, DO NOT cancel the other
       # containers, because this will kill Cypress processes
@@ -500,6 +505,27 @@ jobs:
 
 **Warning ⚠️:** Cypress actions use `GITHUB_TOKEN` to get the correct branch and the number of jobs run, making it possible to re-run without the need of pushing an empty commit. If you don't want to use the `GITHUB_TOKEN` you can still run your tests without problem with the only note that Cypress Dashboard API connects parallel jobs into a single logical run using GitHub commit SHA plus workflow name. If you attempt to re-run GitHub checks, the Dashboard thinks the run has already ended. In order to truly rerun parallel jobs, push an empty commit with `git commit --allow-empty -m "re-run checks" && git push`. As another work around you can generate and cache a custom build id, read [Adding a unique build number to GitHub Actions](https://medium.com/attest-engineering/adding-a-unique-github-build-identifier-7aa2e83cadca)
 
+The Cypress GH Action does not spawn or create any additional containers - it only links the multiple containers spawned using the matrix strategy into a single logical Dashboard run and into splitting the specs amongst the machines. See the [Cypress parallelization](https://on.cypress.io/parallelization) guide for the explanation.
+
+### Component tests
+
+You can run the [Cypress component tests](https://on.cypress.io/component-testing) after running E2E tests by calling the action again with a custom command:
+
+```yml
+- name: Run E2E tests 🧪
+  uses: cypress-io/github-action@v2
+
+- name: Run Component tests 🧪
+  uses: cypress-io/github-action@v2
+  with:
+    # we have already installed everything
+    install: false
+    # to run component tests we need to use "cypress run-ct"
+    command: yarn cypress run-ct
+```
+
+See the example project [cypress-react-component-example](https://github.com/bahmutov/cypress-react-component-example)
+
 ### Build app
 
 You can run a build step before starting tests
@@ -509,7 +535,7 @@ name: Build
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -528,7 +554,7 @@ name: With server
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -545,7 +571,7 @@ name: With server
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -581,6 +607,17 @@ jobs:
           start: npm run api, npm run web
 ```
 
+You can place the start commands in separate lines
+
+```yml
+with:
+  start: |
+    npm run api
+    npm run web
+```
+
+[![start example](https://github.com/cypress-io/github-action/workflows/example-start/badge.svg?branch=master)](.github/workflows/example-start.yml)
+
 ### Wait-on
 
 If you are starting a local server and it takes a while to start, you can add a parameter `wait-on` and pass url to wait for the server to respond.
@@ -590,7 +627,7 @@ name: After server responds
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -665,7 +702,7 @@ name: Visual
 on: [push]
 jobs:
   e2e:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -708,7 +745,7 @@ name: Parallel
 on: [push]
 jobs:
   test:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         # run 3 copies of the current job in parallel
@@ -729,6 +766,39 @@ jobs:
 
 **Tip:** see GitHub Actions [environment variables](https://help.github.com/en/actions/automating-your-workflow-with-github-actions/using-environment-variables) and [expression syntax](https://help.github.com/en/actions/automating-your-workflow-with-github-actions/contexts-and-expression-syntax-for-github-actions).
 
+### Robust custom build id
+
+If you re-run the GitHub workflow, if you use the same custom build id during recording, the Dashboard will cancel the run with "Build already finished" error. To avoid this, you need to generate a _new_ custom build id on every workflow re-run. A good solution showing in the [example-custom-ci-build-id.yml](./.github/workflows/example-custom-ci-build-id.yml) file is to run a common job first that just generates a new random ID. This ID can be used by the testing jobs to tie the build together. If the user re-runs the workflow a new unique build id is generated, allowing recording the new Dashboard run.
+
+```yml
+jobs:
+  # single job that generates and outputs a common id
+  prepare:
+    outputs:
+      uuid: ${{ steps.uuid.outputs.value }}
+    steps:
+      - name: Generate unique ID 💎
+        id: uuid
+        # take the current commit + timestamp together
+        # the typical value would be something like
+        # "sha-5d3fe...35d3-time-1620841214"
+        run: echo "::set-output name=value::sha-$GITHUB_SHA-time-$(date +"%s")"
+  smoke-tests:
+    needs: ['prepare']
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cypress-io/github-action@v2
+        with:
+          record: true
+          parallel: true
+          ci-build-id: ${{ needs.prepare.outputs.uuid }}
+        env:
+          # pass the Dashboard record key as an environment variable
+          CYPRESS_RECORD_KEY: ${{ secrets.EXAMPLE_RECORDING_KEY }}
+```
+
+See the [example-custom-ci-build-id.yml](./.github/workflows/example-custom-ci-build-id.yml) for the full workflow
+
 ### Working directory
 
 In a monorepo, the end-to-end test might be placed in a different sub-folder from the application itself, like this
@@ -748,7 +818,7 @@ You can specify the `e2e` working directory when running Cypress tests using `wo
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
@@ -784,7 +854,7 @@ name: E2E
 on: push
 jobs:
   test:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@master
       - name: Install root dependencies
@@ -836,7 +906,7 @@ name: End-to-end tests
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     # let's make sure our "app" works on several versions of Node
     strategy:
       matrix:
@@ -897,7 +967,7 @@ name: E2E
 on: push
 jobs:
   test:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@master
       - name: Install dependencies
@@ -943,12 +1013,33 @@ See [.github/workflows/example-install-only.yml](.github/workflows/example-insta
 
 [![Install only Cypress example](https://github.com/cypress-io/github-action/workflows/example-install-only/badge.svg?branch=master)](.github/workflows/example-install-only.yml)
 
+### Timeouts
+
+You can tell the CI to stop the job or the individual step if it runs for longer then a given time limit. This is a good practice to ensure the hanging process does not accidentally use up all your CI minutes.
+
+```yml
+jobs:
+  cypress-run:
+    runs-on: ubuntu-20.04
+    # stop the job if it runs over 10 minutes
+    # to prevent a hanging process from using all your CI minutes
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cypress-io/github-action@v2
+        # you can specify individual step timeout too
+        timeout-minutes: 5
+```
+
+See [cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example)
+
 ### More examples
 
 <!-- prettier-ignore-start -->
 Name | Description
 --- | ---
-[cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example) | uses Yarn, and runs in parallel on several versions of Node, also different browsers
+[cypress-gh-action-small-example](https://github.com/bahmutov/cypress-gh-action-small-example) | Runs tests and records them on Cypress Dashboard
+[cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example) | uses Yarn, and runs in parallel on several versions of Node, different browsers, and more.
 [cypress-gh-action-monorepo](https://github.com/bahmutov/cypress-gh-action-monorepo) | splits install and running tests commands, runs Cypress from sub-folder
 [cypress-gh-action-subfolders](https://github.com/bahmutov/cypress-gh-action-subfolders) | separate folder for Cypress dependencies
 [cypress-gh-action-split-install](https://github.com/bahmutov/cypress-gh-action-split-install) | only install NPM dependencies, then install and cache Cypress binary yourself
@@ -956,6 +1047,10 @@ Name | Description
 [gh-action-and-gh-integration](https://github.com/cypress-io/gh-action-and-gh-integration) | records to the dashboard and has [Cypress GH Integration](https://on.cypress.io/github-integration) app installed
 [test-personal-site](https://github.com/bahmutov/test-personal-site) | Testing an external website every night and by manually clicking a button.
 [cypress-gh-action-changed-files](https://github.com/bahmutov/cypress-gh-action-changed-files) | Shows how to run different Cypress projects depending on changed files
+[cypress-examples](https://github.com/bahmutov/cypress-examples) | Shows separate install job from parallel test jobs
+[cypress-gh-action-split-jobs](https://github.com/bahmutov/cypress-gh-action-split-jobs) | Shows a separate install job with the build step, and another job that runs the tests
+[cypress-and-jest-typescript-example](https://github.com/cypress-io/cypress-and-jest-typescript-example) | Run E2E and Jest unit tests in parallel
+[cypress-react-component-example](https://github.com/bahmutov/cypress-react-component-example) | Run E2E and component tests using this action
 <!-- prettier-ignore-end -->
 
 ## Notes
@@ -968,14 +1063,22 @@ This action uses several production dependencies. The minimum Node version requi
 
 ## Debugging
 
-You can see verbose messages from GitHub Actions by setting the following secrets (from [Debugging Actions Guide](https://github.com/actions/toolkit/blob/master/docs/action-debugging.md#step-debug-logs))
+This action uses the [debug](https://github.com/visionmedia/debug#readme) module to output additional verbose logs. You can see these debug messages by setting the following environment variable:
 
 ```
-ACTIONS_RUNNER_DEBUG: true
-ACTIONS_STEP_DEBUG: true
+DEBUG: @cypress/github-action
 ```
 
-The `ACTIONS_RUNNER_DEBUG` will show generic Actions messages, while `ACTIONS_STEP_DEBUG` will enable the `core.debug(...)` messages from this actions.
+You can set the environment variable using GitHub UI interface, or in the workflow file:
+
+```yml
+- name: Cypress tests with debug logs
+  uses: cypress-io/github-action@v2
+  env:
+    DEBUG: '@cypress/github-action'
+```
+
+See the [example-debug.yml](./.github/workflows/example-debug.yml) workflow file.
 
 ### Logs from the test runner
 
@@ -1018,6 +1121,7 @@ Read [DEVELOPMENT.md](DEVELOPMENT.md)
 - Read our blog post [Drastically Simplify Testing on CI with Cypress GitHub Action](https://www.cypress.io/blog/2019/11/20/drastically-simplify-your-testing-with-cypress-github-action/)
 - Read [Test the Preview Vercel Deploys](https://glebbahmutov.com/blog/develop-preview-test/) blog post
 - [Building actions](https://help.github.com/en/actions/automating-your-workflow-with-github-actions/building-actions) docs
+- practice using the Cypress GitHub Action by following the [Cypress on CI Workshop](https://github.com/cypress-io/cypress-workshop-ci)
 
 ## Extras
 
@@ -1067,6 +1171,77 @@ jobs:
       - uses: actions/checkout@v2
       - run: cypress run
 ```
+
+### Print Cypress info
+
+Sometimes you might want to print Cypress and OS information, like the list of detected browsers. You can use the [`cypress info`](https://on.cypress.io/command-line#cypress-info) command for this.
+
+If you are NOT using the `build` command in your project, you can run the `cypress info` command:
+
+```yml
+name: info
+on: [push]
+jobs:
+  cypress-run:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Cypress run
+        uses: cypress-io/github-action@v2
+        with:
+          build: npx cypress info
+```
+
+If you are already using the `build` parameter, you can split the [installation and the test steps](#split-install-and-tests) and insert the `cypress info` command in between:
+
+```yml
+name: info
+on: [push]
+jobs:
+  cypress-run:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Cypress install
+        uses: cypress-io/github-action@v2
+        with:
+          # just perform install
+          runTests: false
+      - name: Cypress info
+        run: npx cypress info
+      - name: Cypress run
+        uses: cypress-io/github-action@v2
+        with:
+          # we have already installed all dependencies above
+          install: false
+          # rest of your parameters
+```
+
+### Nightly tests
+
+Sometimes you want to execute the workflow on a schedule. For example, to run Cypress tests nightly, you can schedule the workflow using `cron` syntax:
+
+```yml
+name: example-cron
+on:
+  schedule:
+    # runs tests every day at 4am
+    - cron: '0 4 * * *'
+jobs:
+  nightly:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Cypress nightly tests 🌃
+        uses: cypress-io/github-action@v2
+```
+
+See the [example-cron.yml](./.github/workflows/example-cron.yml) workflow.
+
+[![cron example](https://github.com/cypress-io/github-action/workflows/example-cron/badge.svg?branch=master)](.github/workflows/example-cron.yml)
 
 ## Migration guide
 

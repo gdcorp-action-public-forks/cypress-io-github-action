@@ -2616,7 +2616,7 @@ const options_to_url_1 = __webpack_require__(907);
 const weakable_map_1 = __webpack_require__(48);
 const get_buffer_1 = __webpack_require__(452);
 const dns_ip_version_1 = __webpack_require__(762);
-const is_response_ok_1 = __webpack_require__(929);
+const is_response_ok_1 = __webpack_require__(422);
 const deprecation_warning_1 = __webpack_require__(994);
 const normalize_arguments_1 = __webpack_require__(823);
 const calculate_retry_delay_1 = __webpack_require__(594);
@@ -2743,7 +2743,7 @@ class RequestError extends Error {
         }
         this.timings = (_a = this.request) === null || _a === void 0 ? void 0 : _a.timings;
         // Recover the original stacktrace
-        if (!is_1.default.undefined(error.stack)) {
+        if (is_1.default.string(error.stack) && is_1.default.string(this.stack)) {
             const indexOfMessage = this.stack.indexOf(this.message) + this.message.length;
             const thisStackTrace = this.stack.slice(indexOfMessage).split('\n').reverse();
             const errorStackTrace = error.stack.slice(error.stack.indexOf(error.message) + error.message.length).split('\n').reverse();
@@ -4296,231 +4296,50 @@ module.exports = ["ac","com.ac","edu.ac","gov.ac","net.ac","mil.ac","org.ac","ad
 /* 51 */,
 /* 52 */,
 /* 53 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
 "use strict";
 
-// TODO: Use the `URL` global when targeting Node.js 10
-const URLParser = typeof URL === 'undefined' ? __webpack_require__(835).URL : URL;
-
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs
-const DATA_URL_DEFAULT_MIME_TYPE = 'text/plain';
-const DATA_URL_DEFAULT_CHARSET = 'us-ascii';
-
-const testParameter = (name, filters) => {
-	return filters.some(filter => filter instanceof RegExp ? filter.test(name) : filter === name);
-};
-
-const normalizeDataURL = (urlString, {stripHash}) => {
-	const parts = urlString.match(/^data:(.*?),(.*?)(?:#(.*))?$/);
-
-	if (!parts) {
-		throw new Error(`Invalid URL: ${urlString}`);
-	}
-
-	const mediaType = parts[1].split(';');
-	const body = parts[2];
-	const hash = stripHash ? '' : parts[3];
-
-	let base64 = false;
-
-	if (mediaType[mediaType.length - 1] === 'base64') {
-		mediaType.pop();
-		base64 = true;
-	}
-
-	// Lowercase MIME type
-	const mimeType = (mediaType.shift() || '').toLowerCase();
-	const attributes = mediaType
-		.map(attribute => {
-			let [key, value = ''] = attribute.split('=').map(string => string.trim());
-
-			// Lowercase `charset`
-			if (key === 'charset') {
-				value = value.toLowerCase();
-
-				if (value === DATA_URL_DEFAULT_CHARSET) {
-					return '';
-				}
-			}
-
-			return `${key}${value ? `=${value}` : ''}`;
-		})
-		.filter(Boolean);
-
-	const normalizedMediaType = [
-		...attributes
-	];
-
-	if (base64) {
-		normalizedMediaType.push('base64');
-	}
-
-	if (normalizedMediaType.length !== 0 || (mimeType && mimeType !== DATA_URL_DEFAULT_MIME_TYPE)) {
-		normalizedMediaType.unshift(mimeType);
-	}
-
-	return `data:${normalizedMediaType.join(';')},${base64 ? body.trim() : body}${hash ? `#${hash}` : ''}`;
-};
-
-const normalizeUrl = (urlString, options) => {
-	options = {
-		defaultProtocol: 'http:',
-		normalizeProtocol: true,
-		forceHttp: false,
-		forceHttps: false,
-		stripAuthentication: true,
-		stripHash: false,
-		stripWWW: true,
-		removeQueryParameters: [/^utm_\w+/i],
-		removeTrailingSlash: true,
-		removeDirectoryIndex: false,
-		sortQueryParameters: true,
-		...options
-	};
-
-	// TODO: Remove this at some point in the future
-	if (Reflect.has(options, 'normalizeHttps')) {
-		throw new Error('options.normalizeHttps is renamed to options.forceHttp');
-	}
-
-	if (Reflect.has(options, 'normalizeHttp')) {
-		throw new Error('options.normalizeHttp is renamed to options.forceHttps');
-	}
-
-	if (Reflect.has(options, 'stripFragment')) {
-		throw new Error('options.stripFragment is renamed to options.stripHash');
-	}
-
-	urlString = urlString.trim();
-
-	// Data URL
-	if (/^data:/i.test(urlString)) {
-		return normalizeDataURL(urlString, options);
-	}
-
-	const hasRelativeProtocol = urlString.startsWith('//');
-	const isRelativeUrl = !hasRelativeProtocol && /^\.*\//.test(urlString);
-
-	// Prepend protocol
-	if (!isRelativeUrl) {
-		urlString = urlString.replace(/^(?!(?:\w+:)?\/\/)|^\/\//, options.defaultProtocol);
-	}
-
-	const urlObj = new URLParser(urlString);
-
-	if (options.forceHttp && options.forceHttps) {
-		throw new Error('The `forceHttp` and `forceHttps` options cannot be used together');
-	}
-
-	if (options.forceHttp && urlObj.protocol === 'https:') {
-		urlObj.protocol = 'http:';
-	}
-
-	if (options.forceHttps && urlObj.protocol === 'http:') {
-		urlObj.protocol = 'https:';
-	}
-
-	// Remove auth
-	if (options.stripAuthentication) {
-		urlObj.username = '';
-		urlObj.password = '';
-	}
-
-	// Remove hash
-	if (options.stripHash) {
-		urlObj.hash = '';
-	}
-
-	// Remove duplicate slashes if not preceded by a protocol
-	if (urlObj.pathname) {
-		// TODO: Use the following instead when targeting Node.js 10
-		// `urlObj.pathname = urlObj.pathname.replace(/(?<!https?:)\/{2,}/g, '/');`
-		urlObj.pathname = urlObj.pathname.replace(/((?!:).|^)\/{2,}/g, (_, p1) => {
-			if (/^(?!\/)/g.test(p1)) {
-				return `${p1}/`;
-			}
-
-			return '/';
-		});
-	}
-
-	// Decode URI octets
-	if (urlObj.pathname) {
-		urlObj.pathname = decodeURI(urlObj.pathname);
-	}
-
-	// Remove directory index
-	if (options.removeDirectoryIndex === true) {
-		options.removeDirectoryIndex = [/^index\.[a-z]+$/];
-	}
-
-	if (Array.isArray(options.removeDirectoryIndex) && options.removeDirectoryIndex.length > 0) {
-		let pathComponents = urlObj.pathname.split('/');
-		const lastComponent = pathComponents[pathComponents.length - 1];
-
-		if (testParameter(lastComponent, options.removeDirectoryIndex)) {
-			pathComponents = pathComponents.slice(0, pathComponents.length - 1);
-			urlObj.pathname = pathComponents.slice(1).join('/') + '/';
-		}
-	}
-
-	if (urlObj.hostname) {
-		// Remove trailing dot
-		urlObj.hostname = urlObj.hostname.replace(/\.$/, '');
-
-		// Remove `www.`
-		if (options.stripWWW && /^www\.([a-z\-\d]{2,63})\.([a-z.]{2,5})$/.test(urlObj.hostname)) {
-			// Each label should be max 63 at length (min: 2).
-			// The extension should be max 5 at length (min: 2).
-			// Source: https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_host_names
-			urlObj.hostname = urlObj.hostname.replace(/^www\./, '');
-		}
-	}
-
-	// Remove query unwanted parameters
-	if (Array.isArray(options.removeQueryParameters)) {
-		for (const key of [...urlObj.searchParams.keys()]) {
-			if (testParameter(key, options.removeQueryParameters)) {
-				urlObj.searchParams.delete(key);
-			}
-		}
-	}
-
-	// Sort query parameters
-	if (options.sortQueryParameters) {
-		urlObj.searchParams.sort();
-	}
-
-	if (options.removeTrailingSlash) {
-		urlObj.pathname = urlObj.pathname.replace(/\/$/, '');
-	}
-
-	// Take advantage of many of the Node `url` normalizations
-	urlString = urlObj.toString();
-
-	// Remove ending `/`
-	if ((options.removeTrailingSlash || urlObj.pathname === '/') && urlObj.hash === '') {
-		urlString = urlString.replace(/\/$/, '');
-	}
-
-	// Restore relative protocol, if applicable
-	if (hasRelativeProtocol && !options.normalizeProtocol) {
-		urlString = urlString.replace(/^http:\/\//, '//');
-	}
-
-	// Remove http/https
-	if (options.stripProtocol) {
-		urlString = urlString.replace(/^(?:https?:)?\/\//, '');
-	}
-
-	return urlString;
-};
-
-module.exports = normalizeUrl;
-// TODO: Remove this for the next major release
-module.exports.default = normalizeUrl;
-
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NoopContextManager = void 0;
+var context_1 = __webpack_require__(560);
+var NoopContextManager = /** @class */ (function () {
+    function NoopContextManager() {
+    }
+    NoopContextManager.prototype.active = function () {
+        return context_1.Context.ROOT_CONTEXT;
+    };
+    NoopContextManager.prototype.with = function (context, fn) {
+        return fn();
+    };
+    NoopContextManager.prototype.bind = function (target, context) {
+        return target;
+    };
+    NoopContextManager.prototype.enable = function () {
+        return this;
+    };
+    NoopContextManager.prototype.disable = function () {
+        return this;
+    };
+    return NoopContextManager;
+}());
+exports.NoopContextManager = NoopContextManager;
+//# sourceMappingURL=NoopContextManager.js.map
 
 /***/ }),
 /* 54 */
@@ -8529,6 +8348,7 @@ const path = __webpack_require__(622)
 const quote = __webpack_require__(531)
 const cliParser = __webpack_require__(880)()
 const findYarnWorkspaceRoot = __webpack_require__(638)
+const debug = __webpack_require__(784)('@cypress/github-action')
 const { ping } = __webpack_require__(946)
 
 /**
@@ -8546,16 +8366,16 @@ const execCommand = (
   console.log('current working directory "%s"', cwd)
 
   const args = cliParser.parse(fullCommand)
-  core.debug(`parsed command: ${args.join(' ')}`)
+  debug(`parsed command: ${args.join(' ')}`)
 
   return io.which(args[0], true).then((toolPath) => {
-    core.debug(`found command "${toolPath}"`)
-    core.debug(`with arguments ${args.slice(1).join(' ')}`)
+    debug(`found command "${toolPath}"`)
+    debug(`with arguments ${args.slice(1).join(' ')}`)
 
     const toolArguments = args.slice(1)
     const argsString = toolArguments.join(' ')
-    core.debug(`running ${quote(toolPath)} ${argsString} in ${cwd}`)
-    core.debug('without waiting for the promise to resolve')
+    debug(`running ${quote(toolPath)} ${argsString} in ${cwd}`)
+    debug(`waiting for the command to finish? ${waitToFinish}`)
 
     const promise = exec.exec(
       quote(toolPath),
@@ -8571,6 +8391,13 @@ const execCommand = (
 const isWindows = () => os.platform() === 'win32'
 const isUrl = (s) => /^https?:\/\//.test(s)
 
+/**
+ * Returns true if the Cypress binary installation was skipped
+ * via an environment variable https://on.cypress.io/installing
+ */
+const isCypressBinarySkipped = () =>
+  process.env.CYPRESS_INSTALL_BINARY === '0'
+
 const homeDirectory = os.homedir()
 const platformAndArch = `${process.platform}-${process.arch}`
 
@@ -8580,7 +8407,7 @@ const startWorkingDirectory = process.cwd()
 const workingDirectory = core.getInput('working-directory')
   ? path.resolve(core.getInput('working-directory'))
   : startWorkingDirectory
-core.debug(`working directory ${workingDirectory}`)
+debug(`working directory ${workingDirectory}`)
 
 /**
  * When running "npm install" or any other Cypress-related commands,
@@ -8604,7 +8431,7 @@ const useYarn = () => fs.existsSync(yarnFilename)
 const lockHash = () => {
   const lockFilename = useYarn() ? yarnFilename : packageLockFilename
   const fileHash = hasha.fromFileSync(lockFilename)
-  core.debug(`Hash from file ${lockFilename} is ${fileHash}`)
+  debug(`Hash from file ${lockFilename} is ${fileHash}`)
   return fileHash
 }
 
@@ -8641,9 +8468,7 @@ const getNpmCache = () => {
 const CYPRESS_CACHE_FOLDER =
   process.env.CYPRESS_CACHE_FOLDER ||
   path.join(homeDirectory, '.cache', 'Cypress')
-core.debug(
-  `using custom Cypress cache folder "${CYPRESS_CACHE_FOLDER}"`
-)
+debug(`using custom Cypress cache folder "${CYPRESS_CACHE_FOLDER}"`)
 
 const getCypressBinaryCache = () => {
   const o = {
@@ -8659,7 +8484,7 @@ const getCypressBinaryCache = () => {
 }
 
 const restoreCachedNpm = () => {
-  core.debug('trying to restore cached NPM modules')
+  debug('trying to restore cached NPM modules')
   const NPM_CACHE = getNpmCache()
   return restoreCache([NPM_CACHE.inputPath], NPM_CACHE.primaryKey, [
     NPM_CACHE.restoreKeys
@@ -8669,7 +8494,7 @@ const restoreCachedNpm = () => {
 }
 
 const saveCachedNpm = () => {
-  core.debug('saving NPM modules')
+  debug('saving NPM modules')
   const NPM_CACHE = getNpmCache()
   return saveCache([NPM_CACHE.inputPath], NPM_CACHE.primaryKey).catch(
     (e) => {
@@ -8679,7 +8504,7 @@ const saveCachedNpm = () => {
 }
 
 const restoreCachedCypressBinary = () => {
-  core.debug('trying to restore cached Cypress binary')
+  debug('trying to restore cached Cypress binary')
   const CYPRESS_BINARY_CACHE = getCypressBinaryCache()
   return restoreCache(
     [CYPRESS_BINARY_CACHE.inputPath],
@@ -8691,7 +8516,13 @@ const restoreCachedCypressBinary = () => {
 }
 
 const saveCachedCypressBinary = () => {
-  core.debug('saving Cypress binary')
+  debug('saving Cypress binary')
+
+  if (isCypressBinarySkipped()) {
+    debug('Skipping Cypress cache save, binary is not installed')
+    return Promise.resolve()
+  }
+
   const CYPRESS_BINARY_CACHE = getCypressBinaryCache()
   return saveCache(
     [CYPRESS_BINARY_CACHE.inputPath],
@@ -8712,14 +8543,14 @@ const install = () => {
   // npm paths with spaces like "C:\Program Files\nodejs\npm.cmd ci"
   const installCommand = core.getInput('install-command')
   if (installCommand) {
-    core.debug(`using custom install command "${installCommand}"`)
+    debug(`using custom install command "${installCommand}"`)
     return execCommand(installCommand, true, 'install command')
   }
 
   if (useYarn()) {
-    core.debug('installing NPM dependencies using Yarn')
+    debug('installing NPM dependencies using Yarn')
     return io.which('yarn', true).then((yarnPath) => {
-      core.debug(`yarn at "${yarnPath}"`)
+      debug(`yarn at "${yarnPath}"`)
       return exec.exec(
         quote(yarnPath),
         ['--frozen-lockfile'],
@@ -8727,19 +8558,25 @@ const install = () => {
       )
     })
   } else {
-    core.debug('installing NPM dependencies')
+    debug('installing NPM dependencies')
 
     return io.which('npm', true).then((npmPath) => {
-      core.debug(`npm at "${npmPath}"`)
+      debug(`npm at "${npmPath}"`)
       return exec.exec(quote(npmPath), ['ci'], cypressCommandOptions)
     })
   }
 }
 
 const listCypressBinaries = () => {
-  core.debug(
+  debug(
     `Cypress versions in the cache folder ${CYPRESS_CACHE_FOLDER}`
   )
+
+  if (isCypressBinarySkipped()) {
+    debug('Skipping Cypress cache list, binary is not installed')
+    return Promise.resolve()
+  }
+
   core.exportVariable('CYPRESS_CACHE_FOLDER', CYPRESS_CACHE_FOLDER)
   return io.which('npx', true).then((npxPath) => {
     return exec.exec(
@@ -8751,9 +8588,14 @@ const listCypressBinaries = () => {
 }
 
 const verifyCypressBinary = () => {
-  core.debug(
+  debug(
     `Verifying Cypress using cache folder ${CYPRESS_CACHE_FOLDER}`
   )
+  if (isCypressBinarySkipped()) {
+    debug('Skipping Cypress verify, binary is not installed')
+    return Promise.resolve()
+  }
+
   core.exportVariable('CYPRESS_CACHE_FOLDER', CYPRESS_CACHE_FOLDER)
   return io.which('npx', true).then((npxPath) => {
     return exec.exec(
@@ -8793,7 +8635,7 @@ const getSpecsList = () => {
     return
   }
   const specLines = spec.split('\n').join(',')
-  core.debug(`extracted spec lines into: "${specLines}"`)
+  debug(`extracted spec lines into: "${specLines}"`)
   return specLines
 }
 
@@ -8803,7 +8645,7 @@ const buildAppMaybe = () => {
     return
   }
 
-  core.debug(`building application using "${buildApp}"`)
+  debug(`building application using "${buildApp}"`)
 
   return execCommand(buildApp, true, 'build app')
 }
@@ -8819,16 +8661,19 @@ const startServersMaybe = () => {
     startCommand = core.getInput('start')
   }
   if (!startCommand) {
-    core.debug('No start command found')
-    return
+    debug('No start command found')
+    return Promise.resolve()
   }
 
+  // allow commands to be separated using commas or newlines
   const separateStartCommands = startCommand
-    .split(',')
+    .split(/,|\n/)
     .map((s) => s.trim())
     .filter(Boolean)
-  core.debug(
-    `Separated start commands ${separateStartCommands.join(', ')}`
+  debug(
+    `Separated ${
+      separateStartCommands.length
+    } start commands ${separateStartCommands.join(', ')}`
   )
 
   return separateStartCommands.map((startCommand) => {
@@ -8858,13 +8703,13 @@ const waitOnUrl = (waitOn, waitOnTimeout = 60) => {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  core.debug(`Waiting for urls ${waitUrls.join(', ')}`)
+  debug(`Waiting for urls ${waitUrls.join(', ')}`)
 
   // run every wait promise after the previous has finished
   // to avoid "noise" of debug messages
   return waitUrls.reduce((prevPromise, url) => {
     return prevPromise.then(() => {
-      core.debug(`Waiting for url ${url}`)
+      debug(`Waiting for url ${url}`)
       return ping(url, waitTimeoutMs)
     })
   }, Promise.resolve())
@@ -8904,10 +8749,10 @@ const getCiBuildId = async () => {
 
   const [owner, repo] = GITHUB_REPOSITORY.split('/')
   let branch
-  let parallelId = `${GITHUB_WORKFLOW} - ${GITHUB_SHA}`
+  let buildId = `${GITHUB_WORKFLOW} - ${GITHUB_SHA}`
 
   if (GITHUB_TOKEN) {
-    core.debug(
+    debug(
       `Determining build id by asking GitHub about run ${GITHUB_RUN_ID}`
     )
 
@@ -8926,7 +8771,7 @@ const getCiBuildId = async () => {
 
     if (resp && resp.data && resp.data.head_branch) {
       branch = resp.data.head_branch
-      core.debug(`found the branch name ${branch}`)
+      debug(`found the branch name ${branch}`)
     }
 
     // This will return the complete list of jobs for a run with their steps,
@@ -8951,24 +8796,22 @@ const getCiBuildId = async () => {
       runsList.data.jobs.length
     ) {
       const jobId = runsList.data.jobs[0].id
-      core.debug(`fetched run list with jobId ${jobId}`)
-      parallelId = `${GITHUB_RUN_ID}-${jobId}`
+      debug(`fetched run list with jobId ${jobId}`)
+      buildId = `${GITHUB_RUN_ID}-${jobId}`
     } else {
-      core.debug('could not get run list data')
+      debug('could not get run list data')
     }
   }
 
-  core.debug(
-    `determined branch ${branch} and parallel id ${parallelId}`
-  )
-  return { branch, parallelId }
+  debug(`determined branch ${branch} and build id ${buildId}`)
+  return { branch, buildId }
 }
 
 /**
  * Forms entire command line like "npx cypress run ..."
  */
 const runTestsUsingCommandLine = async () => {
-  core.debug('Running Cypress tests using CLI command')
+  debug('Running Cypress tests using CLI command')
   const quoteArgument = isWindows() ? quote : I
 
   const commandPrefix = core.getInput('command-prefix')
@@ -8988,7 +8831,7 @@ const runTestsUsingCommandLine = async () => {
   // otherwise they are passed all as a single string
   const parts = commandPrefix.split(' ')
   cmd = cmd.concat(parts)
-  core.debug(`with concatenated command prefix: ${cmd.join(' ')}`)
+  debug(`with concatenated command prefix: ${cmd.join(' ')}`)
 
   // push each CLI argument separately
   cmd.push('cypress')
@@ -9034,14 +8877,14 @@ const runTestsUsingCommandLine = async () => {
   }
 
   if (parallel || group) {
-    const { branch, parallelId } = await getCiBuildId()
+    const { branch, buildId } = await getCiBuildId()
     if (branch) {
       core.exportVariable('GH_BRANCH', branch)
     }
 
-    const customCiBuildId = core.getInput('ci-build-id') || parallelId
     cmd.push('--ci-build-id')
-    cmd.push(quoteArgument(customCiBuildId))
+    const ciBuildId = core.getInput('ci-build-id') || buildId
+    cmd.push(quoteArgument(ciBuildId))
   }
 
   const browser = core.getInput('browser')
@@ -9073,10 +8916,10 @@ const runTestsUsingCommandLine = async () => {
     windowsVerbatimArguments: false
   }
 
-  core.debug(`in working directory "${cypressCommandOptions.cwd}"`)
+  debug(`in working directory "${cypressCommandOptions.cwd}"`)
 
   const npxPath = await io.which('npx', true)
-  core.debug(`npx path: ${npxPath}`)
+  debug(`npx path: ${npxPath}`)
 
   return exec.exec(quote(npxPath), cmd, opts)
 }
@@ -9108,14 +8951,14 @@ const runTests = async () => {
     return runTestsUsingCommandLine()
   }
 
-  core.debug('Running Cypress tests using NPM module API')
-  core.debug(`requiring cypress dependency, cwd is ${process.cwd()}`)
-  core.debug(`working directory ${workingDirectory}`)
+  debug('Running Cypress tests using NPM module API')
+  debug(`requiring cypress dependency, cwd is ${process.cwd()}`)
+  debug(`working directory ${workingDirectory}`)
   const cypressModulePath =
     require.resolve('cypress', {
       paths: [workingDirectory]
     }) || 'cypress'
-  core.debug(`resolved cypress ${cypressModulePath}`)
+  debug(`resolved cypress ${cypressModulePath}`)
 
   const cypress = require(cypressModulePath)
   const cypressOptions = {
@@ -9133,7 +8976,7 @@ const runTests = async () => {
   }
   if (core.getInput('config')) {
     cypressOptions.config = core.getInput('config')
-    core.debug(`Cypress config "${cypressOptions.config}"`)
+    debug(`Cypress config "${cypressOptions.config}"`)
   }
   const spec = getSpecsList()
   if (spec) {
@@ -9155,25 +8998,27 @@ const runTests = async () => {
   }
 
   if (cypressOptions.parallel || cypressOptions.group) {
-    const { branch, parallelId } = await getCiBuildId()
+    const { branch, buildId } = await getCiBuildId()
     if (branch) {
       core.exportVariable('GH_BRANCH', branch)
     }
 
-    const customCiBuildId = core.getInput('ci-build-id') || parallelId
-    if (customCiBuildId) {
-      cypressOptions.ciBuildId = customCiBuildId
-    }
+    cypressOptions.ciBuildId = core.getInput('ci-build-id') || buildId
   }
 
-  core.debug(`Cypress options ${JSON.stringify(cypressOptions)}`)
+  debug(`Cypress options ${JSON.stringify(cypressOptions)}`)
 
   const onTestsFinished = (testResults) => {
     process.chdir(startWorkingDirectory)
 
     if (testResults.failures) {
       console.error('Test run failed, code %d', testResults.failures)
+      console.error('More information might be available above')
+
       if (testResults.message) {
+        console.error(
+          'Cypress module has returned the following error message:'
+        )
         console.error(testResults.message)
       }
 
@@ -9182,13 +9027,13 @@ const runTests = async () => {
       )
     }
 
-    core.debug(`Cypress tests: ${testResults.totalFailed} failed`)
+    debug(`Cypress tests: ${testResults.totalFailed} failed`)
 
     const dashboardUrl = testResults.runUrl
     if (dashboardUrl) {
-      core.debug(`Dashboard url ${dashboardUrl}`)
+      debug(`Dashboard url ${dashboardUrl}`)
     } else {
-      core.debug('There is no Dashboard url')
+      debug('There is no Dashboard url')
     }
     // we still set the output explicitly
     core.setOutput('dashboardUrl', dashboardUrl)
@@ -9224,18 +9069,18 @@ const installMaybe = () => {
     restoreCachedNpm(),
     restoreCachedCypressBinary()
   ]).then(([npmCacheHit, cypressCacheHit]) => {
-    core.debug(`npm cache hit ${npmCacheHit}`)
-    core.debug(`cypress cache hit ${cypressCacheHit}`)
+    debug(`npm cache hit ${npmCacheHit}`)
+    debug(`cypress cache hit ${cypressCacheHit}`)
 
     return install().then(() => {
+      debug('install has finished')
       return listCypressBinaries().then(() => {
         if (npmCacheHit && cypressCacheHit) {
-          core.debug(
-            'no need to verify Cypress binary or save caches'
-          )
+          debug('no need to verify Cypress binary or save caches')
           return Promise.resolve(undefined)
         }
 
+        debug('verifying Cypress binary')
         return verifyCypressBinary()
           .then(saveCachedNpm)
           .then(saveCachedCypressBinary)
@@ -9250,7 +9095,7 @@ installMaybe()
   .then(waitOnMaybe)
   .then(runTests)
   .then(() => {
-    core.debug('all done, exiting')
+    debug('all done, exiting')
     // force exit to avoid waiting for child processes,
     // like the server we have started
     // see https://github.com/actions/toolkit/issues/216
@@ -9259,8 +9104,8 @@ installMaybe()
   .catch((error) => {
     // final catch - when anything goes wrong, throw an error
     // and exit the action with non-zero code
-    core.debug(error.message)
-    core.debug(error.stack)
+    debug(error.message)
+    debug(error.stack)
 
     core.setFailed(error.message)
     process.exit(1)
@@ -9277,8 +9122,10 @@ installMaybe()
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
-var tslib = __webpack_require__(422);
+var tslib = __webpack_require__(640);
 
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
 var listenersMap = new WeakMap();
 var abortedMap = new WeakMap();
 /**
@@ -9289,19 +9136,15 @@ var abortedMap = new WeakMap();
  * cannot or will not ever be cancelled.
  *
  * @example
- * // Abort without timeout
+ * Abort without timeout
+ * ```ts
  * await doAsyncWork(AbortSignal.none);
- *
- * @export
- * @class AbortSignal
- * @implements {AbortSignalLike}
+ * ```
  */
 var AbortSignal = /** @class */ (function () {
     function AbortSignal() {
         /**
          * onabort event listener.
-         *
-         * @memberof AbortSignal
          */
         this.onabort = null;
         listenersMap.set(this, []);
@@ -9312,8 +9155,6 @@ var AbortSignal = /** @class */ (function () {
          * Status of whether aborted or not.
          *
          * @readonly
-         * @type {boolean}
-         * @memberof AbortSignal
          */
         get: function () {
             if (!abortedMap.has(this)) {
@@ -9321,7 +9162,7 @@ var AbortSignal = /** @class */ (function () {
             }
             return abortedMap.get(this);
         },
-        enumerable: true,
+        enumerable: false,
         configurable: true
     });
     Object.defineProperty(AbortSignal, "none", {
@@ -9329,22 +9170,18 @@ var AbortSignal = /** @class */ (function () {
          * Creates a new AbortSignal instance that will never be aborted.
          *
          * @readonly
-         * @static
-         * @type {AbortSignal}
-         * @memberof AbortSignal
          */
         get: function () {
             return new AbortSignal();
         },
-        enumerable: true,
+        enumerable: false,
         configurable: true
     });
     /**
      * Added new "abort" event listener, only support "abort" event.
      *
-     * @param {"abort"} _type Only support "abort" event
-     * @param {(this: AbortSignalLike, ev: any) => any} listener
-     * @memberof AbortSignal
+     * @param _type - Only support "abort" event
+     * @param listener - The listener to be added
      */
     AbortSignal.prototype.addEventListener = function (
     // tslint:disable-next-line:variable-name
@@ -9358,9 +9195,8 @@ var AbortSignal = /** @class */ (function () {
     /**
      * Remove "abort" event listener, only support "abort" event.
      *
-     * @param {"abort"} _type Only support "abort" event
-     * @param {(this: AbortSignalLike, ev: any) => any} listener
-     * @memberof AbortSignal
+     * @param _type - Only support "abort" event
+     * @param listener - The listener to be removed
      */
     AbortSignal.prototype.removeEventListener = function (
     // tslint:disable-next-line:variable-name
@@ -9389,9 +9225,9 @@ var AbortSignal = /** @class */ (function () {
  * - If there is a timeout, the timer will be cancelled.
  * - If aborted is true, nothing will happen.
  *
- * @returns
  * @internal
  */
+// eslint-disable-next-line @azure/azure-sdk/ts-use-interface-parameters
 function abortSignal(signal) {
     if (signal.aborted) {
         return;
@@ -9408,12 +9244,14 @@ function abortSignal(signal) {
     abortedMap.set(signal, true);
 }
 
+// Copyright (c) Microsoft Corporation.
 /**
  * This error is thrown when an asynchronous operation has been aborted.
  * Check for this error by testing the `name` that the name property of the
  * error matches `"AbortError"`.
  *
  * @example
+ * ```ts
  * const controller = new AbortController();
  * controller.abort();
  * try {
@@ -9423,6 +9261,7 @@ function abortSignal(signal) {
  *     // handle abort error here.
  *   }
  * }
+ * ```
  */
 var AbortError = /** @class */ (function (_super) {
     tslib.__extends(AbortError, _super);
@@ -9438,34 +9277,37 @@ var AbortError = /** @class */ (function (_super) {
  * that an asynchronous operation should be aborted.
  *
  * @example
- * // Abort an operation when another event fires
+ * Abort an operation when another event fires
+ * ```ts
  * const controller = new AbortController();
  * const signal = controller.signal;
  * doAsyncWork(signal);
  * button.addEventListener('click', () => controller.abort());
+ * ```
  *
  * @example
- * // Share aborter cross multiple operations in 30s
+ * Share aborter cross multiple operations in 30s
+ * ```ts
  * // Upload the same data to 2 different data centers at the same time,
  * // abort another when any of them is finished
  * const controller = AbortController.withTimeout(30 * 1000);
  * doAsyncWork(controller.signal).then(controller.abort);
  * doAsyncWork(controller.signal).then(controller.abort);
+ *```
  *
  * @example
- * // Cascaded aborting
+ * Cascaded aborting
+ * ```ts
  * // All operations can't take more than 30 seconds
  * const aborter = Aborter.timeout(30 * 1000);
  *
  * // Following 2 operations can't take more than 25 seconds
  * await doAsyncWork(aborter.withTimeout(25 * 1000));
  * await doAsyncWork(aborter.withTimeout(25 * 1000));
- *
- * @export
- * @class AbortController
- * @implements {AbortSignalLike}
+ * ```
  */
 var AbortController = /** @class */ (function () {
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     function AbortController(parentSignals) {
         var _this = this;
         this._signal = new AbortSignal();
@@ -9474,6 +9316,7 @@ var AbortController = /** @class */ (function () {
         }
         // coerce parentSignals into an array
         if (!Array.isArray(parentSignals)) {
+            // eslint-disable-next-line prefer-rest-params
             parentSignals = arguments;
         }
         for (var _i = 0, parentSignals_1 = parentSignals; _i < parentSignals_1.length; _i++) {
@@ -9497,30 +9340,23 @@ var AbortController = /** @class */ (function () {
          * when the abort method is called on this controller.
          *
          * @readonly
-         * @type {AbortSignal}
-         * @memberof AbortController
          */
         get: function () {
             return this._signal;
         },
-        enumerable: true,
+        enumerable: false,
         configurable: true
     });
     /**
      * Signal that any operations passed this controller's associated abort signal
      * to cancel any remaining work and throw an `AbortError`.
-     *
-     * @memberof AbortController
      */
     AbortController.prototype.abort = function () {
         abortSignal(this._signal);
     };
     /**
      * Creates a new AbortSignal instance that will abort after the provided ms.
-     *
-     * @static
-     * @params {number} ms Elapsed time in milliseconds to trigger an abort.
-     * @returns {AbortSignal}
+     * @param ms - Elapsed time in milliseconds to trigger an abort.
      */
     AbortController.timeout = function (ms) {
         var signal = new AbortSignal();
@@ -9765,20 +9601,7 @@ module.exports = copySync
 
 /***/ }),
 /* 111 */,
-/* 112 */
-/***/ (function(module) {
-
-"use strict";
-
-
-module.exports = (from, to, events) => {
-	for (const event of events) {
-		from.on(event, (...args) => to.emit(event, ...args));
-	}
-};
-
-
-/***/ }),
+/* 112 */,
 /* 113 */,
 /* 114 */
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
@@ -9990,6 +9813,7 @@ function saveCache(cacheId, archivePath, options) {
         // Commit Cache
         core.debug('Commiting cache');
         const cacheSize = utils.getArchiveFileSizeIsBytes(archivePath);
+        core.info(`Cache Size: ~${Math.round(cacheSize / (1024 * 1024))} MB (${cacheSize} B)`);
         const commitCacheResponse = yield commitCache(httpClient, cacheId, cacheSize);
         if (!requestUtils_1.isSuccessStatusCode(commitCacheResponse.statusCode)) {
             throw new Error(`Cache service responded with ${commitCacheResponse.statusCode} during commit cache.`);
@@ -12256,6 +12080,7 @@ var __values;
 var __read;
 var __spread;
 var __spreadArrays;
+var __spreadArray;
 var __await;
 var __asyncGenerator;
 var __asyncDelegator;
@@ -12295,6 +12120,8 @@ var __createBinding;
         function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
 
     __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
         extendStatics(d, b);
         function __() { this.constructor = d; }
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
@@ -12414,18 +12241,26 @@ var __createBinding;
         return ar;
     };
 
+    /** @deprecated */
     __spread = function () {
         for (var ar = [], i = 0; i < arguments.length; i++)
             ar = ar.concat(__read(arguments[i]));
         return ar;
     };
 
+    /** @deprecated */
     __spreadArrays = function () {
         for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
         for (var r = Array(s), k = 0, i = 0; i < il; i++)
             for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
                 r[k] = a[j];
         return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
     };
 
     __await = function (v) {
@@ -12510,6 +12345,7 @@ var __createBinding;
     exporter("__read", __read);
     exporter("__spread", __spread);
     exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
     exporter("__await", __await);
     exporter("__asyncGenerator", __asyncGenerator);
     exporter("__asyncDelegator", __asyncDelegator);
@@ -13714,7 +13550,7 @@ exports.NOOP_TRACER_PROVIDER = new NoopTracerProvider();
 
 
 
-var isDescriptor = __webpack_require__(221);
+var isDescriptor = __webpack_require__(715);
 
 module.exports = function defineProperty(obj, prop, val) {
   if (typeof obj !== 'object' && typeof obj !== 'function') {
@@ -13974,7 +13810,7 @@ const {Writable} = __webpack_require__(794);
 const {Agent, globalAgent} = __webpack_require__(542);
 const IncomingMessage = __webpack_require__(156);
 const urlToOptions = __webpack_require__(395);
-const proxyEvents = __webpack_require__(112);
+const proxyEvents = __webpack_require__(231);
 const isRequestPseudoHeader = __webpack_require__(734);
 const {
 	ERR_INVALID_ARG_TYPE,
@@ -15687,35 +15523,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 //# sourceMappingURL=SpanOptions.js.map
 
 /***/ }),
-/* 221 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-"use strict";
-/*!
- * is-descriptor <https://github.com/jonschlinkert/is-descriptor>
- *
- * Copyright (c) 2015-2017, Jon Schlinkert.
- * Released under the MIT License.
- */
-
-
-
-var typeOf = __webpack_require__(421);
-var isAccessor = __webpack_require__(209);
-var isData = __webpack_require__(447);
-
-module.exports = function isDescriptor(obj, key) {
-  if (typeOf(obj) !== 'object') {
-    return false;
-  }
-  if ('get' in obj) {
-    return isAccessor(obj, key);
-  }
-  return isData(obj, key);
-};
-
-
-/***/ }),
+/* 221 */,
 /* 222 */
 /***/ (function(module) {
 
@@ -16259,7 +16067,7 @@ var AzureKeyCredential = /** @class */ (function () {
      * Create an instance of an AzureKeyCredential for use
      * with a service client.
      *
-     * @param key the initial value of the key to use in authentication
+     * @param key - The initial value of the key to use in authentication
      */
     function AzureKeyCredential(key) {
         if (!key) {
@@ -16283,7 +16091,7 @@ var AzureKeyCredential = /** @class */ (function () {
      * Updates will take effect upon the next request after
      * updating the key value.
      *
-     * @param newKey the new key value to be used
+     * @param newKey - The new key value to be used
      */
     AzureKeyCredential.prototype.update = function (newKey) {
         this._key = newKey;
@@ -16294,9 +16102,55 @@ var AzureKeyCredential = /** @class */ (function () {
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 /**
+ * A static-signature-based credential that supports updating
+ * the underlying signature value.
+ */
+var AzureSASCredential = /** @class */ (function () {
+    /**
+     * Create an instance of an AzureSASCredential for use
+     * with a service client.
+     *
+     * @param signature - The initial value of the shared access signature to use in authentication
+     */
+    function AzureSASCredential(signature) {
+        if (!signature) {
+            throw new Error("shared access signature must be a non-empty string");
+        }
+        this._signature = signature;
+    }
+    Object.defineProperty(AzureSASCredential.prototype, "signature", {
+        /**
+         * The value of the shared access signature to be used in authentication
+         */
+        get: function () {
+            return this._signature;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Change the value of the signature.
+     *
+     * Updates will take effect upon the next request after
+     * updating the signature value.
+     *
+     * @param newSignature - The new shared access signature value to be used
+     */
+    AzureSASCredential.prototype.update = function (newSignature) {
+        if (!newSignature) {
+            throw new Error("shared access signature must be a non-empty string");
+        }
+        this._signature = newSignature;
+    };
+    return AzureSASCredential;
+}());
+
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+/**
  * Tests an object to determine whether it implements TokenCredential.
  *
- * @param credential The assumed TokenCredential to be tested.
+ * @param credential - The assumed TokenCredential to be tested.
  */
 function isTokenCredential(credential) {
     // Check for an object with a 'getToken' function and possibly with
@@ -16304,12 +16158,14 @@ function isTokenCredential(credential) {
     // a ServiceClientCredentials implementor (like TokenClientCredentials
     // in ms-rest-nodeauth) doesn't get mistaken for a TokenCredential if
     // it doesn't actually implement TokenCredential also.
-    return (credential &&
-        typeof credential.getToken === "function" &&
-        (credential.signRequest === undefined || credential.getToken.length > 0));
+    var castCredential = credential;
+    return (castCredential &&
+        typeof castCredential.getToken === "function" &&
+        (castCredential.signRequest === undefined || castCredential.getToken.length > 0));
 }
 
 exports.AzureKeyCredential = AzureKeyCredential;
+exports.AzureSASCredential = AzureSASCredential;
 exports.isTokenCredential = isTokenCredential;
 //# sourceMappingURL=index.js.map
 
@@ -16354,40 +16210,17 @@ module.exports = function defineProperty(obj, prop, val) {
 
 /***/ }),
 /* 231 */
-/***/ (function(__unusedmodule, exports, __webpack_require__) {
+/***/ (function(module) {
 
 "use strict";
 
-/*
- * Copyright The OpenTelemetry Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) __createBinding(exports, m, p);
+
+module.exports = (from, to, events) => {
+	for (const event of events) {
+		from.on(event, (...args) => to.emit(event, ...args));
+	}
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-__exportStar(__webpack_require__(328), exports);
-__exportStar(__webpack_require__(715), exports);
-__exportStar(__webpack_require__(924), exports);
-//# sourceMappingURL=index.js.map
+
 
 /***/ }),
 /* 232 */
@@ -16404,7 +16237,7 @@ const fs = {}
 assign(fs, __webpack_require__(869))
 // Export extra methods:
 assign(fs, __webpack_require__(774))
-assign(fs, __webpack_require__(640))
+assign(fs, __webpack_require__(820))
 assign(fs, __webpack_require__(63))
 assign(fs, __webpack_require__(723))
 assign(fs, __webpack_require__(55))
@@ -16478,7 +16311,7 @@ module.exports.argument = escapeArgument;
 "use strict";
 
 
-var typeOf = __webpack_require__(355);
+var typeOf = __webpack_require__(924);
 var copyDescriptor = __webpack_require__(237);
 var define = __webpack_require__(877);
 
@@ -18594,11 +18427,310 @@ function processEmit (ev, arg) {
 /* 262 */
 /***/ (function(module) {
 
-var toString = {}.toString;
+/*! *****************************************************************************
+Copyright (c) Microsoft Corporation.
 
-module.exports = Array.isArray || function (arr) {
-  return toString.call(arr) == '[object Array]';
-};
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global global, define, System, Reflect, Promise */
+var __extends;
+var __assign;
+var __rest;
+var __decorate;
+var __param;
+var __metadata;
+var __awaiter;
+var __generator;
+var __exportStar;
+var __values;
+var __read;
+var __spread;
+var __spreadArrays;
+var __spreadArray;
+var __await;
+var __asyncGenerator;
+var __asyncDelegator;
+var __asyncValues;
+var __makeTemplateObject;
+var __importStar;
+var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __createBinding;
+(function (factory) {
+    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
+    if (typeof define === "function" && define.amd) {
+        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
+    }
+    else if ( true && typeof module.exports === "object") {
+        factory(createExporter(root, createExporter(module.exports)));
+    }
+    else {
+        factory(createExporter(root));
+    }
+    function createExporter(exports, previous) {
+        if (exports !== root) {
+            if (typeof Object.create === "function") {
+                Object.defineProperty(exports, "__esModule", { value: true });
+            }
+            else {
+                exports.__esModule = true;
+            }
+        }
+        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
+    }
+})
+(function (exporter) {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+
+    __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+
+    __assign = Object.assign || function (t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+
+    __rest = function (s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    };
+
+    __decorate = function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+
+    __param = function (paramIndex, decorator) {
+        return function (target, key) { decorator(target, key, paramIndex); }
+    };
+
+    __metadata = function (metadataKey, metadataValue) {
+        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+    };
+
+    __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    };
+
+    __generator = function (thisArg, body) {
+        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+        function verb(n) { return function (v) { return step([n, v]); }; }
+        function step(op) {
+            if (f) throw new TypeError("Generator is already executing.");
+            while (_) try {
+                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                if (y = 0, t) op = [op[0] & 2, t.value];
+                switch (op[0]) {
+                    case 0: case 1: t = op; break;
+                    case 4: _.label++; return { value: op[1], done: false };
+                    case 5: _.label++; y = op[1]; op = [0]; continue;
+                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                    default:
+                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                        if (t[2]) _.ops.pop();
+                        _.trys.pop(); continue;
+                }
+                op = body.call(thisArg, _);
+            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+        }
+    };
+
+    __exportStar = function(m, o) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+    };
+
+    __createBinding = Object.create ? (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+    }) : (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    });
+
+    __values = function (o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+            next: function () {
+                if (o && i >= o.length) o = void 0;
+                return { value: o && o[i++], done: !o };
+            }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+    };
+
+    __read = function (o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        }
+        catch (error) { e = { error: error }; }
+        finally {
+            try {
+                if (r && !r.done && (m = i["return"])) m.call(i);
+            }
+            finally { if (e) throw e.error; }
+        }
+        return ar;
+    };
+
+    /** @deprecated */
+    __spread = function () {
+        for (var ar = [], i = 0; i < arguments.length; i++)
+            ar = ar.concat(__read(arguments[i]));
+        return ar;
+    };
+
+    /** @deprecated */
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
+    };
+
+    __await = function (v) {
+        return this instanceof __await ? (this.v = v, this) : new __await(v);
+    };
+
+    __asyncGenerator = function (thisArg, _arguments, generator) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var g = generator.apply(thisArg, _arguments || []), i, q = [];
+        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
+        function fulfill(value) { resume("next", value); }
+        function reject(value) { resume("throw", value); }
+        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+    };
+
+    __asyncDelegator = function (o) {
+        var i, p;
+        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+    };
+
+    __asyncValues = function (o) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var m = o[Symbol.asyncIterator], i;
+        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    };
+
+    __makeTemplateObject = function (cooked, raw) {
+        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+        return cooked;
+    };
+
+    var __setModuleDefault = Object.create ? (function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+        o["default"] = v;
+    };
+
+    __importStar = function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+
+    __importDefault = function (mod) {
+        return (mod && mod.__esModule) ? mod : { "default": mod };
+    };
+
+    __classPrivateFieldGet = function (receiver, privateMap) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to get private field on non-instance");
+        }
+        return privateMap.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, privateMap, value) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to set private field on non-instance");
+        }
+        privateMap.set(receiver, value);
+        return value;
+    };
+
+    exporter("__extends", __extends);
+    exporter("__assign", __assign);
+    exporter("__rest", __rest);
+    exporter("__decorate", __decorate);
+    exporter("__param", __param);
+    exporter("__metadata", __metadata);
+    exporter("__awaiter", __awaiter);
+    exporter("__generator", __generator);
+    exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
+    exporter("__values", __values);
+    exporter("__read", __read);
+    exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
+    exporter("__await", __await);
+    exporter("__asyncGenerator", __asyncGenerator);
+    exporter("__asyncDelegator", __asyncDelegator);
+    exporter("__asyncValues", __asyncValues);
+    exporter("__makeTemplateObject", __makeTemplateObject);
+    exporter("__importStar", __importStar);
+    exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+});
 
 
 /***/ }),
@@ -23468,27 +23600,52 @@ var MatchKind;
 
 /***/ }),
 /* 328 */
-/***/ (function(__unusedmodule, exports) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
-"use strict";
+var parse = __webpack_require__(763);
+var types = parse.types;
 
-/*
- * Copyright The OpenTelemetry Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-Object.defineProperty(exports, "__esModule", { value: true });
-//# sourceMappingURL=types.js.map
+module.exports = function (re, opts) {
+    if (!opts) opts = {};
+    var replimit = opts.limit === undefined ? 25 : opts.limit;
+    
+    if (isRegExp(re)) re = re.source;
+    else if (typeof re !== 'string') re = String(re);
+    
+    try { re = parse(re) }
+    catch (err) { return false }
+    
+    var reps = 0;
+    return (function walk (node, starHeight) {
+        if (node.type === types.REPETITION) {
+            starHeight ++;
+            reps ++;
+            if (starHeight > 1) return false;
+            if (reps > replimit) return false;
+        }
+        
+        if (node.options) {
+            for (var i = 0, len = node.options.length; i < len; i++) {
+                var ok = walk({ stack: node.options[i] }, starHeight);
+                if (!ok) return false;
+            }
+        }
+        var stack = node.stack || (node.value && node.value.stack);
+        if (!stack) return true;
+        
+        for (var i = 0; i < stack.length; i++) {
+            var ok = walk(stack[i], starHeight);
+            if (!ok) return false;
+        }
+        
+        return true;
+    })(re, 0);
+};
+
+function isRegExp (x) {
+    return {}.toString.call(x) === '[object RegExp]';
+}
+
 
 /***/ }),
 /* 329 */,
@@ -24731,128 +24888,7 @@ module.exports = {
 
 /***/ }),
 /* 354 */,
-/* 355 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-var isBuffer = __webpack_require__(812);
-var toString = Object.prototype.toString;
-
-/**
- * Get the native `typeof` a value.
- *
- * @param  {*} `val`
- * @return {*} Native javascript type
- */
-
-module.exports = function kindOf(val) {
-  // primitivies
-  if (typeof val === 'undefined') {
-    return 'undefined';
-  }
-  if (val === null) {
-    return 'null';
-  }
-  if (val === true || val === false || val instanceof Boolean) {
-    return 'boolean';
-  }
-  if (typeof val === 'string' || val instanceof String) {
-    return 'string';
-  }
-  if (typeof val === 'number' || val instanceof Number) {
-    return 'number';
-  }
-
-  // functions
-  if (typeof val === 'function' || val instanceof Function) {
-    return 'function';
-  }
-
-  // array
-  if (typeof Array.isArray !== 'undefined' && Array.isArray(val)) {
-    return 'array';
-  }
-
-  // check for instances of RegExp and Date before calling `toString`
-  if (val instanceof RegExp) {
-    return 'regexp';
-  }
-  if (val instanceof Date) {
-    return 'date';
-  }
-
-  // other objects
-  var type = toString.call(val);
-
-  if (type === '[object RegExp]') {
-    return 'regexp';
-  }
-  if (type === '[object Date]') {
-    return 'date';
-  }
-  if (type === '[object Arguments]') {
-    return 'arguments';
-  }
-  if (type === '[object Error]') {
-    return 'error';
-  }
-
-  // buffer
-  if (isBuffer(val)) {
-    return 'buffer';
-  }
-
-  // es6: Map, WeakMap, Set, WeakSet
-  if (type === '[object Set]') {
-    return 'set';
-  }
-  if (type === '[object WeakSet]') {
-    return 'weakset';
-  }
-  if (type === '[object Map]') {
-    return 'map';
-  }
-  if (type === '[object WeakMap]') {
-    return 'weakmap';
-  }
-  if (type === '[object Symbol]') {
-    return 'symbol';
-  }
-
-  // typed arrays
-  if (type === '[object Int8Array]') {
-    return 'int8array';
-  }
-  if (type === '[object Uint8Array]') {
-    return 'uint8array';
-  }
-  if (type === '[object Uint8ClampedArray]') {
-    return 'uint8clampedarray';
-  }
-  if (type === '[object Int16Array]') {
-    return 'int16array';
-  }
-  if (type === '[object Uint16Array]') {
-    return 'uint16array';
-  }
-  if (type === '[object Int32Array]') {
-    return 'int32array';
-  }
-  if (type === '[object Uint32Array]') {
-    return 'uint32array';
-  }
-  if (type === '[object Float32Array]') {
-    return 'float32array';
-  }
-  if (type === '[object Float64Array]') {
-    return 'float64array';
-  }
-
-  // must be a plain object
-  return 'object';
-};
-
-
-/***/ }),
+/* 355 */,
 /* 356 */
 /***/ (function(__unusedmodule, exports) {
 
@@ -27748,12 +27784,12 @@ var FilterBlobItem = {
                     name: "String"
                 }
             },
-            tagValue: {
-                xmlName: "TagValue",
-                required: true,
-                serializedName: "TagValue",
+            tags: {
+                xmlName: "Tags",
+                serializedName: "Tags",
                 type: {
-                    name: "String"
+                    name: "Composite",
+                    className: "BlobTags"
                 }
             }
         }
@@ -28528,6 +28564,12 @@ var ServiceGetAccountInfoHeaders = {
                         "FileStorage",
                         "BlockBlobStorage"
                     ]
+                }
+            },
+            isHierarchicalNamespaceEnabled: {
+                serializedName: "x-ms-is-hns-enabled",
+                type: {
+                    name: "Boolean"
                 }
             },
             errorCode: {
@@ -30452,6 +30494,87 @@ var BlockBlobUploadHeaders = {
     type: {
         name: "Composite",
         className: "BlockBlobUploadHeaders",
+        modelProperties: {
+            etag: {
+                serializedName: "etag",
+                type: {
+                    name: "String"
+                }
+            },
+            lastModified: {
+                serializedName: "last-modified",
+                type: {
+                    name: "DateTimeRfc1123"
+                }
+            },
+            contentMD5: {
+                serializedName: "content-md5",
+                type: {
+                    name: "ByteArray"
+                }
+            },
+            clientRequestId: {
+                serializedName: "x-ms-client-request-id",
+                type: {
+                    name: "String"
+                }
+            },
+            requestId: {
+                serializedName: "x-ms-request-id",
+                type: {
+                    name: "String"
+                }
+            },
+            version: {
+                serializedName: "x-ms-version",
+                type: {
+                    name: "String"
+                }
+            },
+            versionId: {
+                serializedName: "x-ms-version-id",
+                type: {
+                    name: "String"
+                }
+            },
+            date: {
+                serializedName: "date",
+                type: {
+                    name: "DateTimeRfc1123"
+                }
+            },
+            isServerEncrypted: {
+                serializedName: "x-ms-request-server-encrypted",
+                type: {
+                    name: "Boolean"
+                }
+            },
+            encryptionKeySha256: {
+                serializedName: "x-ms-encryption-key-sha256",
+                type: {
+                    name: "String"
+                }
+            },
+            encryptionScope: {
+                serializedName: "x-ms-encryption-scope",
+                type: {
+                    name: "String"
+                }
+            },
+            errorCode: {
+                serializedName: "x-ms-error-code",
+                type: {
+                    name: "String"
+                }
+            }
+        }
+    }
+};
+var BlockBlobPutBlobFromUrlHeaders = {
+    serializedName: "blockblob-putblobfromurl-headers",
+    type: {
+        name: "Composite",
+        className: "BlockBlobPutBlobFromUrlHeaders",
         modelProperties: {
             etag: {
                 serializedName: "etag",
@@ -32789,6 +32912,8 @@ var Mappers = /*#__PURE__*/Object.freeze({
     __proto__: null,
     BlobServiceProperties: BlobServiceProperties,
     BlobServiceStatistics: BlobServiceStatistics,
+    BlobTag: BlobTag,
+    BlobTags: BlobTags,
     ContainerItem: ContainerItem,
     ContainerProperties: ContainerProperties,
     CorsRule: CorsRule,
@@ -33016,6 +33141,21 @@ var blobContentType = {
         serializedName: "x-ms-blob-content-type",
         type: {
             name: "String"
+        }
+    }
+};
+var blobDeleteType = {
+    parameterPath: [
+        "options",
+        "blobDeleteType"
+    ],
+    mapper: {
+        serializedName: "deletetype",
+        type: {
+            name: "Enum",
+            allowedValues: [
+                "Permanent"
+            ]
         }
     }
 };
@@ -33482,6 +33622,18 @@ var copySource = {
         serializedName: "x-ms-copy-source",
         type: {
             name: "String"
+        }
+    }
+};
+var copySourceBlobProperties = {
+    parameterPath: [
+        "options",
+        "copySourceBlobProperties"
+    ],
+    mapper: {
+        serializedName: "x-ms-copy-source-blob-properties",
+        type: {
+            name: "Boolean"
         }
     }
 };
@@ -34458,7 +34610,7 @@ var version = {
         required: true,
         isConstant: true,
         serializedName: "x-ms-version",
-        defaultValue: '2020-02-10',
+        defaultValue: '2020-04-08',
         type: {
             name: "String"
         }
@@ -35739,7 +35891,8 @@ var deleteMethodOperationSpec$1 = {
     queryParameters: [
         snapshot,
         versionId,
-        timeoutInSeconds
+        timeoutInSeconds,
+        blobDeleteType
     ],
     headerParameters: [
         deleteSnapshots,
@@ -36455,7 +36608,8 @@ var getTagsOperationSpec = {
     headerParameters: [
         version,
         requestId,
-        ifTags
+        ifTags,
+        leaseId0
     ],
     responses: {
         200: {
@@ -36486,7 +36640,8 @@ var setTagsOperationSpec = {
         transactionalContentMD5,
         transactionalContentCrc64,
         requestId,
-        ifTags
+        ifTags,
+        leaseId0
     ],
     requestBody: {
         parameterPath: [
@@ -37239,6 +37394,7 @@ var Mappers$5 = /*#__PURE__*/Object.freeze({
     Block: Block,
     BlockBlobCommitBlockListHeaders: BlockBlobCommitBlockListHeaders,
     BlockBlobGetBlockListHeaders: BlockBlobGetBlockListHeaders,
+    BlockBlobPutBlobFromUrlHeaders: BlockBlobPutBlobFromUrlHeaders,
     BlockBlobStageBlockFromURLHeaders: BlockBlobStageBlockFromURLHeaders,
     BlockBlobStageBlockHeaders: BlockBlobStageBlockHeaders,
     BlockBlobUploadHeaders: BlockBlobUploadHeaders,
@@ -37271,6 +37427,13 @@ var BlockBlob = /** @class */ (function () {
             contentLength: contentLength,
             options: options
         }, uploadOperationSpec, callback);
+    };
+    BlockBlob.prototype.putBlobFromUrl = function (contentLength, copySource, options, callback) {
+        return this.client.sendOperationRequest({
+            contentLength: contentLength,
+            copySource: copySource,
+            options: options
+        }, putBlobFromUrlOperationSpec, callback);
     };
     BlockBlob.prototype.stageBlock = function (blockId, contentLength, body, options, callback) {
         return this.client.sendOperationRequest({
@@ -37357,6 +37520,61 @@ var uploadOperationSpec = {
         default: {
             bodyMapper: StorageError,
             headersMapper: BlockBlobUploadHeaders
+        }
+    },
+    isXML: true,
+    serializer: serializer$5
+};
+var putBlobFromUrlOperationSpec = {
+    httpMethod: "PUT",
+    path: "{containerName}/{blob}",
+    urlParameters: [
+        url
+    ],
+    queryParameters: [
+        timeoutInSeconds
+    ],
+    headerParameters: [
+        transactionalContentMD5,
+        contentLength,
+        metadata,
+        encryptionScope,
+        tier0,
+        version,
+        requestId,
+        sourceContentMD5,
+        blobTagsString,
+        copySource,
+        copySourceBlobProperties,
+        blobType2,
+        blobContentType,
+        blobContentEncoding,
+        blobContentLanguage,
+        blobContentMD5,
+        blobCacheControl,
+        blobContentDisposition,
+        leaseId0,
+        encryptionKey,
+        encryptionKeySha256,
+        encryptionAlgorithm,
+        ifModifiedSince,
+        ifUnmodifiedSince,
+        ifMatch,
+        ifNoneMatch,
+        ifTags,
+        sourceIfModifiedSince,
+        sourceIfUnmodifiedSince,
+        sourceIfMatch,
+        sourceIfNoneMatch,
+        sourceIfTags
+    ],
+    responses: {
+        201: {
+            headersMapper: BlockBlobPutBlobFromUrlHeaders
+        },
+        default: {
+            bodyMapper: StorageError,
+            headersMapper: BlockBlobPutBlobFromUrlHeaders
         }
     },
     isXML: true,
@@ -37541,8 +37759,8 @@ var logger = logger$1.createClientLogger("storage-blob");
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-var SDK_VERSION = "12.3.0";
-var SERVICE_VERSION = "2020-02-10";
+var SDK_VERSION = "12.4.1";
+var SERVICE_VERSION = "2020-04-08";
 var BLOCK_BLOB_MAX_UPLOAD_BLOB_BYTES = 256 * 1024 * 1024; // 256MB
 var BLOCK_BLOB_MAX_STAGE_BLOCK_BYTES = 4000 * 1024 * 1024; // 4000MB
 var BLOCK_BLOB_MAX_BLOCKS = 50000;
@@ -37939,6 +38157,18 @@ function setURLParameter(url, name, value) {
     return urlParsed.toString();
 }
 /**
+ * Get URL parameter by name.
+ *
+ * @export
+ * @param {string} url
+ * @param {string} name
+ * @returns {(string | string[] | undefined)}
+ */
+function getURLParameter(url, name) {
+    var urlParsed = coreHttp.URLBuilder.parse(url);
+    return urlParsed.getQueryParameterValue(name);
+}
+/**
  * Set URL host.
  *
  * @export
@@ -38022,6 +38252,26 @@ function getURLQueries(url) {
         queries[key] = value;
     }
     return queries;
+}
+/**
+ * Append a string to URL query.
+ *
+ * @export
+ * @param {string} url Source URL string.
+ * @param {string} queryParts String to be appended to the URL query.
+ * @returns {string} An updated URL string.
+ */
+function appendToURLQuery(url, queryParts) {
+    var urlParsed = coreHttp.URLBuilder.parse(url);
+    var query = urlParsed.getQuery();
+    if (query) {
+        query += "&" + queryParts;
+    }
+    else {
+        query = queryParts;
+    }
+    urlParsed.setQuery(query);
+    return urlParsed.toString();
 }
 /**
  * Rounds a date off to seconds.
@@ -38328,6 +38578,18 @@ function parseObjectReplicationRecord(objectReplicationRecord) {
     }
     return orProperties;
 }
+/**
+ * Attach a TokenCredential to an object.
+ *
+ * @export
+ * @param {T} thing
+ * @param {TokenCredential} credential
+ * @returns {T}
+ */
+function attachCredential(thing, credential) {
+    thing.credential = credential;
+    return thing;
+}
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 /**
@@ -38572,11 +38834,7 @@ var StorageRetryPolicy = /** @class */ (function (_super) {
                 var retriableError = retriableErrors_1[_i];
                 if (err.name.toUpperCase().includes(retriableError) ||
                     err.message.toUpperCase().includes(retriableError) ||
-                    (err.code &&
-                        err.code
-                            .toString()
-                            .toUpperCase()
-                            .includes(retriableError))) {
+                    (err.code && err.code.toString().toUpperCase() === retriableError)) {
                     logger.info("RetryPolicy: Network error " + retriableError + " found, will retry.");
                     return true;
                 }
@@ -38596,6 +38854,10 @@ var StorageRetryPolicy = /** @class */ (function (_super) {
                 logger.info("RetryPolicy: Will retry for status code " + statusCode + ".");
                 return true;
             }
+        }
+        if ((err === null || err === void 0 ? void 0 : err.code) === "PARSE_ERROR" && (err === null || err === void 0 ? void 0 : err.message.startsWith("Error \"Error: Unclosed root tag"))) {
+            logger.info("RetryPolicy: Incomplete XML response likely due to service timeout, will retry.");
+            return true;
         }
         return false;
     };
@@ -38856,9 +39118,7 @@ var TelemetryPolicyFactory = /** @class */ (function () {
         var userAgentInfo = [];
         {
             if (telemetry) {
-                // FIXME: replace() only replaces the first space. And we have no idea why we need to replace spaces in the first place.
-                // But fixing this would be a breaking change. Logged an issue here: https://github.com/Azure/azure-sdk-for-js/issues/10793
-                var telemetryString = (telemetry.userAgentPrefix || "").replace(" ", "");
+                var telemetryString = telemetry.userAgentPrefix || "";
                 if (telemetryString.length > 0 && userAgentInfo.indexOf(telemetryString) === -1) {
                     userAgentInfo.push(telemetryString);
                 }
@@ -38961,8 +39221,11 @@ function newPipeline(credential, pipelineOptions) {
         telemetryPolicy,
         coreHttp.generateClientRequestIdPolicy(),
         new StorageBrowserPolicyFactory(),
-        coreHttp.deserializationPolicy(),
         new StorageRetryPolicyFactory(pipelineOptions.retryOptions),
+        // Default deserializationPolicy is provided by protocol layer
+        // Use customized XML char key of "#" so we could deserialize metadata
+        // with "_" key
+        coreHttp.deserializationPolicy(undefined, { xmlCharKey: "#" }),
         coreHttp.logPolicy({
             logger: logger.info,
             allowedHeaderNames: StorageBlobLoggingAllowedHeaderNames,
@@ -38975,13 +39238,12 @@ function newPipeline(credential, pipelineOptions) {
         factories.push(coreHttp.disableResponseDecompressionPolicy());
     }
     factories.push(coreHttp.isTokenCredential(credential)
-        ? coreHttp.bearerTokenAuthenticationPolicy(credential, StorageOAuthScopes)
+        ? attachCredential(coreHttp.bearerTokenAuthenticationPolicy(credential, StorageOAuthScopes), credential)
         : credential);
     return new Pipeline(factories, pipelineOptions);
 }
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
-var ABORT_ERROR = new abortController.AbortError("The operation was aborted.");
 /**
  * ONLY AVAILABLE IN NODE.JS RUNTIME.
  *
@@ -39005,36 +39267,9 @@ var RetriableReadableStream = /** @class */ (function (_super) {
      */
     function RetriableReadableStream(source, getter, offset, count, options) {
         if (options === void 0) { options = {}; }
-        var _this = _super.call(this) || this;
+        var _this = _super.call(this, { highWaterMark: options.highWaterMark }) || this;
         _this.retries = 0;
-        _this.abortHandler = function () {
-            _this.source.pause();
-            _this.emit("error", ABORT_ERROR);
-        };
-        _this.aborter = options.abortSignal || abortController.AbortSignal.none;
-        _this.getter = getter;
-        _this.source = source;
-        _this.start = offset;
-        _this.offset = offset;
-        _this.end = offset + count - 1;
-        _this.maxRetryRequests =
-            options.maxRetryRequests && options.maxRetryRequests >= 0 ? options.maxRetryRequests : 0;
-        _this.onProgress = options.onProgress;
-        _this.options = options;
-        _this.aborter.addEventListener("abort", _this.abortHandler);
-        _this.setSourceDataHandler();
-        _this.setSourceEndHandler();
-        _this.setSourceErrorHandler();
-        return _this;
-    }
-    RetriableReadableStream.prototype._read = function () {
-        if (!this.aborter.aborted) {
-            this.source.resume();
-        }
-    };
-    RetriableReadableStream.prototype.setSourceDataHandler = function () {
-        var _this = this;
-        this.source.on("data", function (data) {
+        _this.sourceDataHandler = function (data) {
             if (_this.options.doInjectErrorOnce) {
                 _this.options.doInjectErrorOnce = undefined;
                 _this.source.pause();
@@ -39052,18 +39287,19 @@ var RetriableReadableStream = /** @class */ (function (_super) {
             if (!_this.push(data)) {
                 _this.source.pause();
             }
-        });
-    };
-    RetriableReadableStream.prototype.setSourceEndHandler = function () {
-        var _this = this;
-        this.source.on("end", function () {
+        };
+        _this.sourceErrorOrEndHandler = function (err) {
+            if (err && err.name === "AbortError") {
+                _this.destroy(err);
+                return;
+            }
             // console.log(
-            //   `Source stream emits end, offset: ${
+            //   `Source stream emits end or error, offset: ${
             //     this.offset
             //   }, dest end : ${this.end}`
             // );
+            _this.removeSourceEventHandlers();
             if (_this.offset - 1 === _this.end) {
-                _this.aborter.removeEventListener("abort", _this.abortHandler);
                 _this.push(null);
             }
             else if (_this.offset <= _this.end) {
@@ -39075,31 +39311,53 @@ var RetriableReadableStream = /** @class */ (function (_super) {
                     _this.getter(_this.offset)
                         .then(function (newSource) {
                         _this.source = newSource;
-                        _this.setSourceDataHandler();
-                        _this.setSourceEndHandler();
-                        _this.setSourceErrorHandler();
+                        _this.setSourceEventHandlers();
                     })
                         .catch(function (error) {
-                        _this.emit("error", error);
+                        _this.destroy(error);
                     });
                 }
                 else {
-                    _this.emit("error", new Error(
+                    _this.destroy(new Error(
                     // tslint:disable-next-line:max-line-length
                     "Data corruption failure: received less data than required and reached maxRetires limitation. Received data offset: " + (_this
                         .offset - 1) + ", data needed offset: " + _this.end + ", retries: " + _this.retries + ", max retries: " + _this.maxRetryRequests));
                 }
             }
             else {
-                _this.emit("error", new Error("Data corruption failure: Received more data than original request, data needed offset is " + _this.end + ", received offset: " + (_this.offset - 1)));
+                _this.destroy(new Error("Data corruption failure: Received more data than original request, data needed offset is " + _this.end + ", received offset: " + (_this.offset - 1)));
             }
-        });
+        };
+        _this.getter = getter;
+        _this.source = source;
+        _this.start = offset;
+        _this.offset = offset;
+        _this.end = offset + count - 1;
+        _this.maxRetryRequests =
+            options.maxRetryRequests && options.maxRetryRequests >= 0 ? options.maxRetryRequests : 0;
+        _this.onProgress = options.onProgress;
+        _this.options = options;
+        _this.setSourceEventHandlers();
+        return _this;
+    }
+    RetriableReadableStream.prototype._read = function () {
+        this.source.resume();
     };
-    RetriableReadableStream.prototype.setSourceErrorHandler = function () {
-        var _this = this;
-        this.source.on("error", function (error) {
-            _this.emit("error", error);
-        });
+    RetriableReadableStream.prototype.setSourceEventHandlers = function () {
+        this.source.on("data", this.sourceDataHandler);
+        this.source.on("end", this.sourceErrorOrEndHandler);
+        this.source.on("error", this.sourceErrorOrEndHandler);
+    };
+    RetriableReadableStream.prototype.removeSourceEventHandlers = function () {
+        this.source.removeListener("data", this.sourceDataHandler);
+        this.source.removeListener("end", this.sourceErrorOrEndHandler);
+        this.source.removeListener("error", this.sourceErrorOrEndHandler);
+    };
+    RetriableReadableStream.prototype._destroy = function (error, callback) {
+        // remove listener from source and release source
+        this.removeSourceEventHandlers();
+        this.source.destroy();
+        callback(error === null ? undefined : error);
     };
     return RetriableReadableStream;
 }(stream.Readable));
@@ -40558,7 +40816,7 @@ var AvroReadable = /** @class */ (function () {
 }());
 
 // Copyright (c) Microsoft Corporation.
-var ABORT_ERROR$1 = new abortController.AbortError("Reading from the avro stream was aborted.");
+var ABORT_ERROR = new abortController.AbortError("Reading from the avro stream was aborted.");
 var AvroReadableFromStream = /** @class */ (function (_super) {
     tslib.__extends(AvroReadableFromStream, _super);
     function AvroReadableFromStream(readable) {
@@ -40588,7 +40846,7 @@ var AvroReadableFromStream = /** @class */ (function (_super) {
             var _this = this;
             return tslib.__generator(this, function (_b) {
                 if ((_a = options.abortSignal) === null || _a === void 0 ? void 0 : _a.aborted) {
-                    throw ABORT_ERROR$1;
+                    throw ABORT_ERROR;
                 }
                 if (size < 0) {
                     throw new Error("size parameter should be positive: " + size);
@@ -40632,7 +40890,7 @@ var AvroReadableFromStream = /** @class */ (function (_super) {
                             };
                             var abortHandler = function () {
                                 cleanUp();
-                                reject(ABORT_ERROR$1);
+                                reject(ABORT_ERROR);
                             };
                             _this._readable.on("readable", readableCallback);
                             _this._readable.once("error", rejectCallback);
@@ -40670,6 +40928,7 @@ var BlobQuickQueryStream = /** @class */ (function (_super) {
     function BlobQuickQueryStream(source, options) {
         if (options === void 0) { options = {}; }
         var _this = _super.call(this) || this;
+        _this.avroPaused = true;
         _this.source = source;
         _this.onProgress = options.onProgress;
         _this.onError = options.onError;
@@ -40679,29 +40938,31 @@ var BlobQuickQueryStream = /** @class */ (function (_super) {
     }
     BlobQuickQueryStream.prototype._read = function () {
         var _this = this;
-        this.readInternal().catch(function (err) {
-            _this.emit("error", err);
-        });
+        if (this.avroPaused) {
+            this.readInternal().catch(function (err) {
+                _this.emit("error", err);
+            });
+        }
     };
     BlobQuickQueryStream.prototype.readInternal = function () {
-        var e_1, _a;
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, _c, obj, schema, exit, data, bytesScanned, totalBytes, fatal, name_1, description, position, e_1_1;
-            return tslib.__generator(this, function (_d) {
-                switch (_d.label) {
+            var avroNext, obj, schema, data, bytesScanned, totalBytes, fatal, name_1, description, position;
+            return tslib.__generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
-                        _d.trys.push([0, 5, 6, 11]);
-                        _b = tslib.__asyncValues(this.avroIter);
-                        _d.label = 1;
-                    case 1: return [4 /*yield*/, _b.next()];
+                        this.avroPaused = false;
+                        _a.label = 1;
+                    case 1: return [4 /*yield*/, this.avroIter.next()];
                     case 2:
-                        if (!(_c = _d.sent(), !_c.done)) return [3 /*break*/, 4];
-                        obj = _c.value;
+                        avroNext = _a.sent();
+                        if (avroNext.done) {
+                            return [3 /*break*/, 4];
+                        }
+                        obj = avroNext.value;
                         schema = obj.$schema;
                         if (typeof schema !== "string") {
                             throw Error("Missing schema in avro record.");
                         }
-                        exit = false;
                         switch (schema) {
                             case "com.microsoft.azure.storage.queryBlobContents.resultData":
                                 data = obj.data;
@@ -40709,7 +40970,7 @@ var BlobQuickQueryStream = /** @class */ (function (_super) {
                                     throw Error("Invalid data in avro result record.");
                                 }
                                 if (!this.push(Buffer.from(data))) {
-                                    exit = true;
+                                    this.avroPaused = true;
                                 }
                                 break;
                             case "com.microsoft.azure.storage.queryBlobContents.progress":
@@ -40760,29 +41021,11 @@ var BlobQuickQueryStream = /** @class */ (function (_super) {
                             default:
                                 throw Error("Unknown schema " + schema + " in avro progress record.");
                         }
-                        if (exit) {
-                            return [3 /*break*/, 4];
-                        }
-                        _d.label = 3;
-                    case 3: return [3 /*break*/, 1];
-                    case 4: return [3 /*break*/, 11];
-                    case 5:
-                        e_1_1 = _d.sent();
-                        e_1 = { error: e_1_1 };
-                        return [3 /*break*/, 11];
-                    case 6:
-                        _d.trys.push([6, , 9, 10]);
-                        if (!(_c && !_c.done && (_a = _b.return))) return [3 /*break*/, 8];
-                        return [4 /*yield*/, _a.call(_b)];
-                    case 7:
-                        _d.sent();
-                        _d.label = 8;
-                    case 8: return [3 /*break*/, 10];
-                    case 9:
-                        if (e_1) throw e_1.error;
-                        return [7 /*endfinally*/];
-                    case 10: return [7 /*endfinally*/];
-                    case 11: return [2 /*return*/];
+                        _a.label = 3;
+                    case 3:
+                        if (!avroNext.done && !this.avroPaused) return [3 /*break*/, 1];
+                        _a.label = 4;
+                    case 4: return [2 /*return*/];
                 }
             });
         });
@@ -41594,7 +41837,7 @@ var StorageSharedKeyCredential = /** @class */ (function (_super) {
  * regenerated.
  */
 var packageName = "azure-storage-blob";
-var packageVersion = "12.3.0";
+var packageVersion = "12.4.1";
 var StorageClientContext = /** @class */ (function (_super) {
     tslib.__extends(StorageClientContext, _super);
     /**
@@ -41616,7 +41859,7 @@ var StorageClientContext = /** @class */ (function (_super) {
             options.userAgent = packageName + "/" + packageVersion + " " + defaultUserAgent;
         }
         _this = _super.call(this, undefined, options) || this;
-        _this.version = "2020-02-10";
+        _this.version = '2020-04-08';
         _this.baseUri = "{url}";
         _this.requestContentType = "application/json; charset=utf-8";
         _this.url = url;
@@ -41729,7 +41972,7 @@ function rangeResponseFromModel(response) {
  * This is the poller returned by {@link BlobClient.beginCopyFromURL}.
  * This can not be instantiated directly outside of this package.
  *
- * @ignore
+ * @hidden
  */
 var BlobBeginCopyFromUrlPoller = /** @class */ (function (_super) {
     tslib.__extends(BlobBeginCopyFromUrlPoller, _super);
@@ -41759,7 +42002,7 @@ var BlobBeginCopyFromUrlPoller = /** @class */ (function (_super) {
  * Note: Intentionally using function expression over arrow function expression
  * so that the function can be invoked with a different context.
  * This affects what `this` refers to.
- * @ignore
+ * @hidden
  */
 var cancel = function cancel(options) {
     if (options === void 0) { options = {}; }
@@ -41794,7 +42037,7 @@ var cancel = function cancel(options) {
  * Note: Intentionally using function expression over arrow function expression
  * so that the function can be invoked with a different context.
  * This affects what `this` refers to.
- * @ignore
+ * @hidden
  */
 var update = function update(options) {
     if (options === void 0) { options = {}; }
@@ -41859,7 +42102,7 @@ var update = function update(options) {
  * Note: Intentionally using function expression over arrow function expression
  * so that the function can be invoked with a different context.
  * This affects what `this` refers to.
- * @ignore
+ * @hidden
  */
 var toString = function toString() {
     return JSON.stringify({ state: this.state }, function (key, value) {
@@ -41872,7 +42115,7 @@ var toString = function toString() {
 };
 /**
  * Creates a poll operation given the provided state.
- * @ignore
+ * @hidden
  */
 function makeBlobBeginCopyFromURLPollOperation(state) {
     return {
@@ -41932,9 +42175,13 @@ var StorageClient = /** @class */ (function () {
         for (var _i = 0, _a = this.pipeline.factories; _i < _a.length; _i++) {
             var factory = _a[_i];
             if ((coreHttp.isNode && factory instanceof StorageSharedKeyCredential) ||
-                factory instanceof AnonymousCredential ||
-                coreHttp.isTokenCredential(factory)) {
+                factory instanceof AnonymousCredential) {
                 this.credential = factory;
+            }
+            else if (coreHttp.isTokenCredential(factory.credential)) {
+                // Only works if the factory has been attached a "credential" property.
+                // We do that in newPipeline() when using TokenCredential.
+                this.credential = factory.credential;
             }
         }
         // Override protocol layer's default content-type
@@ -42784,6 +43031,1101 @@ function readStreamToLocalFile(rs, file) {
 var fsStat = util.promisify(fs.stat);
 var fsCreateReadStream = fs.createReadStream;
 
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * This is a helper class to construct a string representing the permissions granted by a ServiceSAS to a blob. Setting
+ * a value to true means that any SAS which uses these permissions will grant permissions for that operation. Once all
+ * the values are set, this should be serialized with toString and set as the permissions field on a
+ * {@link BlobSASSignatureValues} object. It is possible to construct the permissions string without this class, but
+ * the order of the permissions is particular and this class guarantees correctness.
+ *
+ * @export
+ * @class BlobSASPermissions
+ */
+var BlobSASPermissions = /** @class */ (function () {
+    function BlobSASPermissions() {
+        /**
+         * Specifies Read access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.read = false;
+        /**
+         * Specifies Add access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.add = false;
+        /**
+         * Specifies Create access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.create = false;
+        /**
+         * Specifies Write access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.write = false;
+        /**
+         * Specifies Delete access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.delete = false;
+        /**
+         * Specifies Delete version access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.deleteVersion = false;
+        /**
+         * Specfies Tag access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.tag = false;
+        /**
+         * Specifies Move access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.move = false;
+        /**
+         * Specifies Execute access granted.
+         *
+         * @type {boolean}
+         * @memberof BlobSASPermissions
+         */
+        this.execute = false;
+    }
+    /**
+     * Creates a {@link BlobSASPermissions} from the specified permissions string. This method will throw an
+     * Error if it encounters a character that does not correspond to a valid permission.
+     *
+     * @static
+     * @param {string} permissions
+     * @returns {BlobSASPermissions}
+     * @memberof BlobSASPermissions
+     */
+    BlobSASPermissions.parse = function (permissions) {
+        var blobSASPermissions = new BlobSASPermissions();
+        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
+            var char = permissions_1[_i];
+            switch (char) {
+                case "r":
+                    blobSASPermissions.read = true;
+                    break;
+                case "a":
+                    blobSASPermissions.add = true;
+                    break;
+                case "c":
+                    blobSASPermissions.create = true;
+                    break;
+                case "w":
+                    blobSASPermissions.write = true;
+                    break;
+                case "d":
+                    blobSASPermissions.delete = true;
+                    break;
+                case "x":
+                    blobSASPermissions.deleteVersion = true;
+                    break;
+                case "t":
+                    blobSASPermissions.tag = true;
+                    break;
+                case "m":
+                    blobSASPermissions.move = true;
+                    break;
+                case "e":
+                    blobSASPermissions.execute = true;
+                    break;
+                default:
+                    throw new RangeError("Invalid permission: " + char);
+            }
+        }
+        return blobSASPermissions;
+    };
+    /**
+     * Creates a {@link BlobSASPermissions} from a raw object which contains same keys as it
+     * and boolean values for them.
+     *
+     * @static
+     * @param {BlobSASPermissionsLike} permissionLike
+     * @returns {BlobSASPermissions}
+     * @memberof BlobSASPermissions
+     */
+    BlobSASPermissions.from = function (permissionLike) {
+        var blobSASPermissions = new BlobSASPermissions();
+        if (permissionLike.read) {
+            blobSASPermissions.read = true;
+        }
+        if (permissionLike.add) {
+            blobSASPermissions.add = true;
+        }
+        if (permissionLike.create) {
+            blobSASPermissions.create = true;
+        }
+        if (permissionLike.write) {
+            blobSASPermissions.write = true;
+        }
+        if (permissionLike.delete) {
+            blobSASPermissions.delete = true;
+        }
+        if (permissionLike.deleteVersion) {
+            blobSASPermissions.deleteVersion = true;
+        }
+        if (permissionLike.tag) {
+            blobSASPermissions.tag = true;
+        }
+        if (permissionLike.move) {
+            blobSASPermissions.move = true;
+        }
+        if (permissionLike.execute) {
+            blobSASPermissions.execute = true;
+        }
+        return blobSASPermissions;
+    };
+    /**
+     * Converts the given permissions to a string. Using this method will guarantee the permissions are in an
+     * order accepted by the service.
+     *
+     * @returns {string} A string which represents the BlobSASPermissions
+     * @memberof BlobSASPermissions
+     */
+    BlobSASPermissions.prototype.toString = function () {
+        var permissions = [];
+        if (this.read) {
+            permissions.push("r");
+        }
+        if (this.add) {
+            permissions.push("a");
+        }
+        if (this.create) {
+            permissions.push("c");
+        }
+        if (this.write) {
+            permissions.push("w");
+        }
+        if (this.delete) {
+            permissions.push("d");
+        }
+        if (this.deleteVersion) {
+            permissions.push("x");
+        }
+        if (this.tag) {
+            permissions.push("t");
+        }
+        if (this.move) {
+            permissions.push("m");
+        }
+        if (this.execute) {
+            permissions.push("e");
+        }
+        return permissions.join("");
+    };
+    return BlobSASPermissions;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * This is a helper class to construct a string representing the permissions granted by a ServiceSAS to a container.
+ * Setting a value to true means that any SAS which uses these permissions will grant permissions for that operation.
+ * Once all the values are set, this should be serialized with toString and set as the permissions field on a
+ * {@link BlobSASSignatureValues} object. It is possible to construct the permissions string without this class, but
+ * the order of the permissions is particular and this class guarantees correctness.
+ *
+ * @export
+ * @class ContainerSASPermissions
+ */
+var ContainerSASPermissions = /** @class */ (function () {
+    function ContainerSASPermissions() {
+        /**
+         * Specifies Read access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.read = false;
+        /**
+         * Specifies Add access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.add = false;
+        /**
+         * Specifies Create access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.create = false;
+        /**
+         * Specifies Write access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.write = false;
+        /**
+         * Specifies Delete access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.delete = false;
+        /**
+         * Specifies Delete version access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.deleteVersion = false;
+        /**
+         * Specifies List access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.list = false;
+        /**
+         * Specfies Tag access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.tag = false;
+        /**
+         * Specifies Move access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.move = false;
+        /**
+         * Specifies Execute access granted.
+         *
+         * @type {boolean}
+         * @memberof ContainerSASPermissions
+         */
+        this.execute = false;
+    }
+    /**
+     * Creates an {@link ContainerSASPermissions} from the specified permissions string. This method will throw an
+     * Error if it encounters a character that does not correspond to a valid permission.
+     *
+     * @static
+     * @param {string} permissions
+     * @returns {ContainerSASPermissions}
+     * @memberof ContainerSASPermissions
+     */
+    ContainerSASPermissions.parse = function (permissions) {
+        var containerSASPermissions = new ContainerSASPermissions();
+        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
+            var char = permissions_1[_i];
+            switch (char) {
+                case "r":
+                    containerSASPermissions.read = true;
+                    break;
+                case "a":
+                    containerSASPermissions.add = true;
+                    break;
+                case "c":
+                    containerSASPermissions.create = true;
+                    break;
+                case "w":
+                    containerSASPermissions.write = true;
+                    break;
+                case "d":
+                    containerSASPermissions.delete = true;
+                    break;
+                case "l":
+                    containerSASPermissions.list = true;
+                    break;
+                case "t":
+                    containerSASPermissions.tag = true;
+                    break;
+                case "x":
+                    containerSASPermissions.deleteVersion = true;
+                    break;
+                case "m":
+                    containerSASPermissions.move = true;
+                    break;
+                case "e":
+                    containerSASPermissions.execute = true;
+                    break;
+                default:
+                    throw new RangeError("Invalid permission " + char);
+            }
+        }
+        return containerSASPermissions;
+    };
+    /**
+     * Creates a {@link ContainerSASPermissions} from a raw object which contains same keys as it
+     * and boolean values for them.
+     *
+     * @static
+     * @param {ContainerSASPermissionsLike} permissionLike
+     * @returns {ContainerSASPermissions}
+     * @memberof ContainerSASPermissions
+     */
+    ContainerSASPermissions.from = function (permissionLike) {
+        var containerSASPermissions = new ContainerSASPermissions();
+        if (permissionLike.read) {
+            containerSASPermissions.read = true;
+        }
+        if (permissionLike.add) {
+            containerSASPermissions.add = true;
+        }
+        if (permissionLike.create) {
+            containerSASPermissions.create = true;
+        }
+        if (permissionLike.write) {
+            containerSASPermissions.write = true;
+        }
+        if (permissionLike.delete) {
+            containerSASPermissions.delete = true;
+        }
+        if (permissionLike.list) {
+            containerSASPermissions.list = true;
+        }
+        if (permissionLike.deleteVersion) {
+            containerSASPermissions.deleteVersion = true;
+        }
+        if (permissionLike.tag) {
+            containerSASPermissions.tag = true;
+        }
+        if (permissionLike.move) {
+            containerSASPermissions.move = true;
+        }
+        if (permissionLike.execute) {
+            containerSASPermissions.execute = true;
+        }
+        return containerSASPermissions;
+    };
+    /**
+     * Converts the given permissions to a string. Using this method will guarantee the permissions are in an
+     * order accepted by the service.
+     *
+     * The order of the characters should be as specified here to ensure correctness.
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas
+     *
+     * @returns {string}
+     * @memberof ContainerSASPermissions
+     */
+    ContainerSASPermissions.prototype.toString = function () {
+        var permissions = [];
+        if (this.read) {
+            permissions.push("r");
+        }
+        if (this.add) {
+            permissions.push("a");
+        }
+        if (this.create) {
+            permissions.push("c");
+        }
+        if (this.write) {
+            permissions.push("w");
+        }
+        if (this.delete) {
+            permissions.push("d");
+        }
+        if (this.deleteVersion) {
+            permissions.push("x");
+        }
+        if (this.list) {
+            permissions.push("l");
+        }
+        if (this.tag) {
+            permissions.push("t");
+        }
+        if (this.move) {
+            permissions.push("m");
+        }
+        if (this.execute) {
+            permissions.push("e");
+        }
+        return permissions.join("");
+    };
+    return ContainerSASPermissions;
+}());
+
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * UserDelegationKeyCredential is only used for generation of user delegation SAS.
+ * @see https://docs.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas
+ *
+ * @export
+ * @class UserDelegationKeyCredential
+ */
+var UserDelegationKeyCredential = /** @class */ (function () {
+    /**
+     * Creates an instance of UserDelegationKeyCredential.
+     * @param {string} accountName
+     * @param {UserDelegationKey} userDelegationKey
+     * @memberof UserDelegationKeyCredential
+     */
+    function UserDelegationKeyCredential(accountName, userDelegationKey) {
+        this.accountName = accountName;
+        this.userDelegationKey = userDelegationKey;
+        this.key = Buffer.from(userDelegationKey.value, "base64");
+    }
+    /**
+     * Generates a hash signature for an HTTP request or for a SAS.
+     *
+     * @param {string} stringToSign
+     * @returns {string}
+     * @memberof UserDelegationKeyCredential
+     */
+    UserDelegationKeyCredential.prototype.computeHMACSHA256 = function (stringToSign) {
+        // console.log(`stringToSign: ${JSON.stringify(stringToSign)}`);
+        return crypto.createHmac("sha256", this.key)
+            .update(stringToSign, "utf8")
+            .digest("base64");
+    };
+    return UserDelegationKeyCredential;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * Generate SasIPRange format string. For example:
+ *
+ * "8.8.8.8" or "1.1.1.1-255.255.255.255"
+ *
+ * @export
+ * @param {SasIPRange} ipRange
+ * @returns {string}
+ */
+function ipRangeToString(ipRange) {
+    return ipRange.end ? ipRange.start + "-" + ipRange.end : ipRange.start;
+}
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+(function (SASProtocol) {
+    /**
+     * Protocol that allows HTTPS only
+     */
+    SASProtocol["Https"] = "https";
+    /**
+     * Protocol that allows both HTTPS and HTTP
+     */
+    SASProtocol["HttpsAndHttp"] = "https,http";
+})(exports.SASProtocol || (exports.SASProtocol = {}));
+/**
+ * Represents the components that make up an Azure Storage SAS' query parameters. This type is not constructed directly
+ * by the user; it is only generated by the {@link AccountSASSignatureValues} and {@link BlobSASSignatureValues}
+ * types. Once generated, it can be encoded into a {@code String} and appended to a URL directly (though caution should
+ * be taken here in case there are existing query parameters, which might affect the appropriate means of appending
+ * these query parameters).
+ *
+ * NOTE: Instances of this class are immutable.
+ *
+ * @export
+ * @class SASQueryParameters
+ */
+var SASQueryParameters = /** @class */ (function () {
+    function SASQueryParameters(version, signature, permissionsOrOptions, services, resourceTypes, protocol, startsOn, expiresOn, ipRange, identifier, resource, cacheControl, contentDisposition, contentEncoding, contentLanguage, contentType, userDelegationKey, preauthorizedAgentObjectId, correlationId) {
+        this.version = version;
+        this.signature = signature;
+        if (permissionsOrOptions !== undefined && typeof permissionsOrOptions !== "string") {
+            // SASQueryParametersOptions
+            this.permissions = permissionsOrOptions.permissions;
+            this.services = permissionsOrOptions.services;
+            this.resourceTypes = permissionsOrOptions.resourceTypes;
+            this.protocol = permissionsOrOptions.protocol;
+            this.startsOn = permissionsOrOptions.startsOn;
+            this.expiresOn = permissionsOrOptions.expiresOn;
+            this.ipRangeInner = permissionsOrOptions.ipRange;
+            this.identifier = permissionsOrOptions.identifier;
+            this.resource = permissionsOrOptions.resource;
+            this.cacheControl = permissionsOrOptions.cacheControl;
+            this.contentDisposition = permissionsOrOptions.contentDisposition;
+            this.contentEncoding = permissionsOrOptions.contentEncoding;
+            this.contentLanguage = permissionsOrOptions.contentLanguage;
+            this.contentType = permissionsOrOptions.contentType;
+            if (permissionsOrOptions.userDelegationKey) {
+                this.signedOid = permissionsOrOptions.userDelegationKey.signedObjectId;
+                this.signedTenantId = permissionsOrOptions.userDelegationKey.signedTenantId;
+                this.signedStartsOn = permissionsOrOptions.userDelegationKey.signedStartsOn;
+                this.signedExpiresOn = permissionsOrOptions.userDelegationKey.signedExpiresOn;
+                this.signedService = permissionsOrOptions.userDelegationKey.signedService;
+                this.signedVersion = permissionsOrOptions.userDelegationKey.signedVersion;
+                this.preauthorizedAgentObjectId = permissionsOrOptions.preauthorizedAgentObjectId;
+                this.correlationId = permissionsOrOptions.correlationId;
+            }
+        }
+        else {
+            this.services = services;
+            this.resourceTypes = resourceTypes;
+            this.expiresOn = expiresOn;
+            this.permissions = permissionsOrOptions;
+            this.protocol = protocol;
+            this.startsOn = startsOn;
+            this.ipRangeInner = ipRange;
+            this.identifier = identifier;
+            this.resource = resource;
+            this.cacheControl = cacheControl;
+            this.contentDisposition = contentDisposition;
+            this.contentEncoding = contentEncoding;
+            this.contentLanguage = contentLanguage;
+            this.contentType = contentType;
+            if (userDelegationKey) {
+                this.signedOid = userDelegationKey.signedObjectId;
+                this.signedTenantId = userDelegationKey.signedTenantId;
+                this.signedStartsOn = userDelegationKey.signedStartsOn;
+                this.signedExpiresOn = userDelegationKey.signedExpiresOn;
+                this.signedService = userDelegationKey.signedService;
+                this.signedVersion = userDelegationKey.signedVersion;
+                this.preauthorizedAgentObjectId = preauthorizedAgentObjectId;
+                this.correlationId = correlationId;
+            }
+        }
+    }
+    Object.defineProperty(SASQueryParameters.prototype, "ipRange", {
+        /**
+         * Optional. IP range allowed for this SAS.
+         *
+         * @readonly
+         * @type {(SasIPRange | undefined)}
+         * @memberof SASQueryParameters
+         */
+        get: function () {
+            if (this.ipRangeInner) {
+                return {
+                    end: this.ipRangeInner.end,
+                    start: this.ipRangeInner.start
+                };
+            }
+            return undefined;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Encodes all SAS query parameters into a string that can be appended to a URL.
+     *
+     * @returns {string}
+     * @memberof SASQueryParameters
+     */
+    SASQueryParameters.prototype.toString = function () {
+        var params = [
+            "sv",
+            "ss",
+            "srt",
+            "spr",
+            "st",
+            "se",
+            "sip",
+            "si",
+            "skoid",
+            "sktid",
+            "skt",
+            "ske",
+            "sks",
+            "skv",
+            "sr",
+            "sp",
+            "sig",
+            "rscc",
+            "rscd",
+            "rsce",
+            "rscl",
+            "rsct",
+            "saoid",
+            "scid"
+        ];
+        var queries = [];
+        for (var _i = 0, params_1 = params; _i < params_1.length; _i++) {
+            var param = params_1[_i];
+            switch (param) {
+                case "sv":
+                    this.tryAppendQueryParameter(queries, param, this.version);
+                    break;
+                case "ss":
+                    this.tryAppendQueryParameter(queries, param, this.services);
+                    break;
+                case "srt":
+                    this.tryAppendQueryParameter(queries, param, this.resourceTypes);
+                    break;
+                case "spr":
+                    this.tryAppendQueryParameter(queries, param, this.protocol);
+                    break;
+                case "st":
+                    this.tryAppendQueryParameter(queries, param, this.startsOn ? truncatedISO8061Date(this.startsOn, false) : undefined);
+                    break;
+                case "se":
+                    this.tryAppendQueryParameter(queries, param, this.expiresOn ? truncatedISO8061Date(this.expiresOn, false) : undefined);
+                    break;
+                case "sip":
+                    this.tryAppendQueryParameter(queries, param, this.ipRange ? ipRangeToString(this.ipRange) : undefined);
+                    break;
+                case "si":
+                    this.tryAppendQueryParameter(queries, param, this.identifier);
+                    break;
+                case "skoid": // Signed object ID
+                    this.tryAppendQueryParameter(queries, param, this.signedOid);
+                    break;
+                case "sktid": // Signed tenant ID
+                    this.tryAppendQueryParameter(queries, param, this.signedTenantId);
+                    break;
+                case "skt": // Signed key start time
+                    this.tryAppendQueryParameter(queries, param, this.signedStartsOn ? truncatedISO8061Date(this.signedStartsOn, false) : undefined);
+                    break;
+                case "ske": // Signed key expiry time
+                    this.tryAppendQueryParameter(queries, param, this.signedExpiresOn ? truncatedISO8061Date(this.signedExpiresOn, false) : undefined);
+                    break;
+                case "sks": // Signed key service
+                    this.tryAppendQueryParameter(queries, param, this.signedService);
+                    break;
+                case "skv": // Signed key version
+                    this.tryAppendQueryParameter(queries, param, this.signedVersion);
+                    break;
+                case "sr":
+                    this.tryAppendQueryParameter(queries, param, this.resource);
+                    break;
+                case "sp":
+                    this.tryAppendQueryParameter(queries, param, this.permissions);
+                    break;
+                case "sig":
+                    this.tryAppendQueryParameter(queries, param, this.signature);
+                    break;
+                case "rscc":
+                    this.tryAppendQueryParameter(queries, param, this.cacheControl);
+                    break;
+                case "rscd":
+                    this.tryAppendQueryParameter(queries, param, this.contentDisposition);
+                    break;
+                case "rsce":
+                    this.tryAppendQueryParameter(queries, param, this.contentEncoding);
+                    break;
+                case "rscl":
+                    this.tryAppendQueryParameter(queries, param, this.contentLanguage);
+                    break;
+                case "rsct":
+                    this.tryAppendQueryParameter(queries, param, this.contentType);
+                    break;
+                case "saoid":
+                    this.tryAppendQueryParameter(queries, param, this.preauthorizedAgentObjectId);
+                    break;
+                case "scid":
+                    this.tryAppendQueryParameter(queries, param, this.correlationId);
+                    break;
+            }
+        }
+        return queries.join("&");
+    };
+    /**
+     * A private helper method used to filter and append query key/value pairs into an array.
+     *
+     * @private
+     * @param {string[]} queries
+     * @param {string} key
+     * @param {string} [value]
+     * @returns {void}
+     * @memberof SASQueryParameters
+     */
+    SASQueryParameters.prototype.tryAppendQueryParameter = function (queries, key, value) {
+        if (!value) {
+            return;
+        }
+        key = encodeURIComponent(key);
+        value = encodeURIComponent(value);
+        if (key.length > 0 && value.length > 0) {
+            queries.push(key + "=" + value);
+        }
+    };
+    return SASQueryParameters;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+function generateBlobSASQueryParameters(blobSASSignatureValues, sharedKeyCredentialOrUserDelegationKey, accountName) {
+    var version = blobSASSignatureValues.version ? blobSASSignatureValues.version : SERVICE_VERSION;
+    var sharedKeyCredential = sharedKeyCredentialOrUserDelegationKey instanceof StorageSharedKeyCredential
+        ? sharedKeyCredentialOrUserDelegationKey
+        : undefined;
+    var userDelegationKeyCredential;
+    if (sharedKeyCredential === undefined && accountName !== undefined) {
+        userDelegationKeyCredential = new UserDelegationKeyCredential(accountName, sharedKeyCredentialOrUserDelegationKey);
+    }
+    if (sharedKeyCredential === undefined && userDelegationKeyCredential === undefined) {
+        throw TypeError("Invalid sharedKeyCredential, userDelegationKey or accountName.");
+    }
+    // Version 2019-12-12 adds support for the blob tags permission.
+    // Version 2018-11-09 adds support for the signed resource and signed blob snapshot time fields.
+    // https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas#constructing-the-signature-string
+    if (version >= "2018-11-09") {
+        if (sharedKeyCredential !== undefined) {
+            return generateBlobSASQueryParameters20181109(blobSASSignatureValues, sharedKeyCredential);
+        }
+        else {
+            // Version 2020-02-10 delegation SAS signature construction includes preauthorizedAgentObjectId, agentObjectId, correlationId.
+            if (version >= "2020-02-10") {
+                return generateBlobSASQueryParametersUDK20200210(blobSASSignatureValues, userDelegationKeyCredential);
+            }
+            else {
+                return generateBlobSASQueryParametersUDK20181109(blobSASSignatureValues, userDelegationKeyCredential);
+            }
+        }
+    }
+    if (version >= "2015-04-05") {
+        if (sharedKeyCredential !== undefined) {
+            return generateBlobSASQueryParameters20150405(blobSASSignatureValues, sharedKeyCredential);
+        }
+        else {
+            throw new RangeError("'version' must be >= '2018-11-09' when generating user delegation SAS using user delegation key.");
+        }
+    }
+    throw new RangeError("'version' must be >= '2015-04-05'.");
+}
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ * IMPLEMENTATION FOR API VERSION FROM 2015-04-05 AND BEFORE 2018-11-09.
+ *
+ * Creates an instance of SASQueryParameters.
+ *
+ * Only accepts required settings needed to create a SAS. For optional settings please
+ * set corresponding properties directly, such as permissions, startsOn and identifier.
+ *
+ * WARNING: When identifier is not provided, permissions and expiresOn are required.
+ * You MUST assign value to identifier or expiresOn & permissions manually if you initial with
+ * this constructor.
+ *
+ * @param {BlobSASSignatureValues} blobSASSignatureValues
+ * @param {StorageSharedKeyCredential} sharedKeyCredential
+ * @returns {SASQueryParameters}
+ */
+function generateBlobSASQueryParameters20150405(blobSASSignatureValues, sharedKeyCredential) {
+    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
+    if (!blobSASSignatureValues.identifier &&
+        !(blobSASSignatureValues.permissions && blobSASSignatureValues.expiresOn)) {
+        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when 'identifier' is not provided.");
+    }
+    var resource = "c";
+    if (blobSASSignatureValues.blobName) {
+        resource = "b";
+    }
+    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
+    var verifiedPermissions;
+    if (blobSASSignatureValues.permissions) {
+        if (blobSASSignatureValues.blobName) {
+            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+        else {
+            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+    }
+    // Signature is generated on the un-url-encoded values.
+    var stringToSign = [
+        verifiedPermissions ? verifiedPermissions : "",
+        blobSASSignatureValues.startsOn
+            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
+            : "",
+        blobSASSignatureValues.expiresOn
+            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
+            : "",
+        getCanonicalName(sharedKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
+        blobSASSignatureValues.identifier,
+        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
+        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
+        blobSASSignatureValues.version,
+        blobSASSignatureValues.cacheControl ? blobSASSignatureValues.cacheControl : "",
+        blobSASSignatureValues.contentDisposition ? blobSASSignatureValues.contentDisposition : "",
+        blobSASSignatureValues.contentEncoding ? blobSASSignatureValues.contentEncoding : "",
+        blobSASSignatureValues.contentLanguage ? blobSASSignatureValues.contentLanguage : "",
+        blobSASSignatureValues.contentType ? blobSASSignatureValues.contentType : ""
+    ].join("\n");
+    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
+    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType);
+}
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ * IMPLEMENTATION FOR API VERSION FROM 2018-11-09.
+ *
+ * Creates an instance of SASQueryParameters.
+ *
+ * Only accepts required settings needed to create a SAS. For optional settings please
+ * set corresponding properties directly, such as permissions, startsOn and identifier.
+ *
+ * WARNING: When identifier is not provided, permissions and expiresOn are required.
+ * You MUST assign value to identifier or expiresOn & permissions manually if you initial with
+ * this constructor.
+ *
+ * @param {BlobSASSignatureValues} blobSASSignatureValues
+ * @param {StorageSharedKeyCredential} sharedKeyCredential
+ * @returns {SASQueryParameters}
+ */
+function generateBlobSASQueryParameters20181109(blobSASSignatureValues, sharedKeyCredential) {
+    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
+    if (!blobSASSignatureValues.identifier &&
+        !(blobSASSignatureValues.permissions && blobSASSignatureValues.expiresOn)) {
+        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when 'identifier' is not provided.");
+    }
+    var resource = "c";
+    var timestamp = blobSASSignatureValues.snapshotTime;
+    if (blobSASSignatureValues.blobName) {
+        resource = "b";
+        if (blobSASSignatureValues.snapshotTime) {
+            resource = "bs";
+        }
+        else if (blobSASSignatureValues.versionId) {
+            resource = "bv";
+            timestamp = blobSASSignatureValues.versionId;
+        }
+    }
+    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
+    var verifiedPermissions;
+    if (blobSASSignatureValues.permissions) {
+        if (blobSASSignatureValues.blobName) {
+            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+        else {
+            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+    }
+    // Signature is generated on the un-url-encoded values.
+    var stringToSign = [
+        verifiedPermissions ? verifiedPermissions : "",
+        blobSASSignatureValues.startsOn
+            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
+            : "",
+        blobSASSignatureValues.expiresOn
+            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
+            : "",
+        getCanonicalName(sharedKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
+        blobSASSignatureValues.identifier,
+        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
+        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
+        blobSASSignatureValues.version,
+        resource,
+        timestamp,
+        blobSASSignatureValues.cacheControl ? blobSASSignatureValues.cacheControl : "",
+        blobSASSignatureValues.contentDisposition ? blobSASSignatureValues.contentDisposition : "",
+        blobSASSignatureValues.contentEncoding ? blobSASSignatureValues.contentEncoding : "",
+        blobSASSignatureValues.contentLanguage ? blobSASSignatureValues.contentLanguage : "",
+        blobSASSignatureValues.contentType ? blobSASSignatureValues.contentType : ""
+    ].join("\n");
+    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
+    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType);
+}
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ * IMPLEMENTATION FOR API VERSION FROM 2018-11-09.
+ *
+ * Creates an instance of SASQueryParameters.
+ *
+ * Only accepts required settings needed to create a SAS. For optional settings please
+ * set corresponding properties directly, such as permissions, startsOn.
+ *
+ * WARNING: identifier will be ignored, permissions and expiresOn are required.
+ *
+ * @param {BlobSASSignatureValues} blobSASSignatureValues
+ * @param {UserDelegationKeyCredential} userDelegationKeyCredential
+ * @returns {SASQueryParameters}
+ */
+function generateBlobSASQueryParametersUDK20181109(blobSASSignatureValues, userDelegationKeyCredential) {
+    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
+    // Stored access policies are not supported for a user delegation SAS.
+    if (!blobSASSignatureValues.permissions || !blobSASSignatureValues.expiresOn) {
+        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when generating user delegation SAS.");
+    }
+    var resource = "c";
+    var timestamp = blobSASSignatureValues.snapshotTime;
+    if (blobSASSignatureValues.blobName) {
+        resource = "b";
+        if (blobSASSignatureValues.snapshotTime) {
+            resource = "bs";
+        }
+        else if (blobSASSignatureValues.versionId) {
+            resource = "bv";
+            timestamp = blobSASSignatureValues.versionId;
+        }
+    }
+    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
+    var verifiedPermissions;
+    if (blobSASSignatureValues.permissions) {
+        if (blobSASSignatureValues.blobName) {
+            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+        else {
+            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+    }
+    // Signature is generated on the un-url-encoded values.
+    var stringToSign = [
+        verifiedPermissions ? verifiedPermissions : "",
+        blobSASSignatureValues.startsOn
+            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
+            : "",
+        blobSASSignatureValues.expiresOn
+            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
+            : "",
+        getCanonicalName(userDelegationKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
+        userDelegationKeyCredential.userDelegationKey.signedObjectId,
+        userDelegationKeyCredential.userDelegationKey.signedTenantId,
+        userDelegationKeyCredential.userDelegationKey.signedStartsOn
+            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedStartsOn, false)
+            : "",
+        userDelegationKeyCredential.userDelegationKey.signedExpiresOn
+            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedExpiresOn, false)
+            : "",
+        userDelegationKeyCredential.userDelegationKey.signedService,
+        userDelegationKeyCredential.userDelegationKey.signedVersion,
+        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
+        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
+        blobSASSignatureValues.version,
+        resource,
+        timestamp,
+        blobSASSignatureValues.cacheControl,
+        blobSASSignatureValues.contentDisposition,
+        blobSASSignatureValues.contentEncoding,
+        blobSASSignatureValues.contentLanguage,
+        blobSASSignatureValues.contentType
+    ].join("\n");
+    var signature = userDelegationKeyCredential.computeHMACSHA256(stringToSign);
+    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType, userDelegationKeyCredential.userDelegationKey);
+}
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ * IMPLEMENTATION FOR API VERSION FROM 2020-02-10.
+ *
+ * Creates an instance of SASQueryParameters.
+ *
+ * Only accepts required settings needed to create a SAS. For optional settings please
+ * set corresponding properties directly, such as permissions, startsOn.
+ *
+ * WARNING: identifier will be ignored, permissions and expiresOn are required.
+ *
+ * @param {BlobSASSignatureValues} blobSASSignatureValues
+ * @param {UserDelegationKeyCredential} userDelegationKeyCredential
+ * @returns {SASQueryParameters}
+ */
+function generateBlobSASQueryParametersUDK20200210(blobSASSignatureValues, userDelegationKeyCredential) {
+    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
+    // Stored access policies are not supported for a user delegation SAS.
+    if (!blobSASSignatureValues.permissions || !blobSASSignatureValues.expiresOn) {
+        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when generating user delegation SAS.");
+    }
+    var resource = "c";
+    var timestamp = blobSASSignatureValues.snapshotTime;
+    if (blobSASSignatureValues.blobName) {
+        resource = "b";
+        if (blobSASSignatureValues.snapshotTime) {
+            resource = "bs";
+        }
+        else if (blobSASSignatureValues.versionId) {
+            resource = "bv";
+            timestamp = blobSASSignatureValues.versionId;
+        }
+    }
+    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
+    var verifiedPermissions;
+    if (blobSASSignatureValues.permissions) {
+        if (blobSASSignatureValues.blobName) {
+            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+        else {
+            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
+        }
+    }
+    // Signature is generated on the un-url-encoded values.
+    var stringToSign = [
+        verifiedPermissions ? verifiedPermissions : "",
+        blobSASSignatureValues.startsOn
+            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
+            : "",
+        blobSASSignatureValues.expiresOn
+            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
+            : "",
+        getCanonicalName(userDelegationKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
+        userDelegationKeyCredential.userDelegationKey.signedObjectId,
+        userDelegationKeyCredential.userDelegationKey.signedTenantId,
+        userDelegationKeyCredential.userDelegationKey.signedStartsOn
+            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedStartsOn, false)
+            : "",
+        userDelegationKeyCredential.userDelegationKey.signedExpiresOn
+            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedExpiresOn, false)
+            : "",
+        userDelegationKeyCredential.userDelegationKey.signedService,
+        userDelegationKeyCredential.userDelegationKey.signedVersion,
+        blobSASSignatureValues.preauthorizedAgentObjectId,
+        undefined,
+        blobSASSignatureValues.correlationId,
+        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
+        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
+        blobSASSignatureValues.version,
+        resource,
+        timestamp,
+        blobSASSignatureValues.cacheControl,
+        blobSASSignatureValues.contentDisposition,
+        blobSASSignatureValues.contentEncoding,
+        blobSASSignatureValues.contentLanguage,
+        blobSASSignatureValues.contentType
+    ].join("\n");
+    var signature = userDelegationKeyCredential.computeHMACSHA256(stringToSign);
+    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType, userDelegationKeyCredential.userDelegationKey, blobSASSignatureValues.preauthorizedAgentObjectId, blobSASSignatureValues.correlationId);
+}
+function getCanonicalName(accountName, containerName, blobName) {
+    // Container: "/blob/account/containerName"
+    // Blob:      "/blob/account/containerName/blobName"
+    var elements = ["/blob/" + accountName + "/" + containerName];
+    if (blobName) {
+        elements.push("/" + blobName);
+    }
+    return elements.join("");
+}
+function SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues) {
+    var version = blobSASSignatureValues.version ? blobSASSignatureValues.version : SERVICE_VERSION;
+    if (blobSASSignatureValues.snapshotTime && version < "2018-11-09") {
+        throw RangeError("'version' must be >= '2018-11-09' when providing 'snapshotTime'.");
+    }
+    if (blobSASSignatureValues.blobName === undefined && blobSASSignatureValues.snapshotTime) {
+        throw RangeError("Must provide 'blobName' when providing 'snapshotTime'.");
+    }
+    if (blobSASSignatureValues.versionId && version < "2019-10-10") {
+        throw RangeError("'version' must be >= '2019-10-10' when providing 'versionId'.");
+    }
+    if (blobSASSignatureValues.blobName === undefined && blobSASSignatureValues.versionId) {
+        throw RangeError("Must provide 'blobName' when providing 'versionId'.");
+    }
+    if (blobSASSignatureValues.permissions &&
+        blobSASSignatureValues.permissions.deleteVersion &&
+        version < "2019-10-10") {
+        throw RangeError("'version' must be >= '2019-10-10' when providing 'x' permission.");
+    }
+    if (blobSASSignatureValues.permissions &&
+        blobSASSignatureValues.permissions.tag &&
+        version < "2019-12-12") {
+        throw RangeError("'version' must be >= '2019-12-12' when providing 't' permission.");
+    }
+    if (version < "2020-02-10" &&
+        blobSASSignatureValues.permissions &&
+        (blobSASSignatureValues.permissions.move || blobSASSignatureValues.permissions.execute)) {
+        throw RangeError("'version' must be >= '2020-02-10' when providing the 'm' or 'e' permission.");
+    }
+    if (version < "2020-02-10" &&
+        (blobSASSignatureValues.preauthorizedAgentObjectId || blobSASSignatureValues.correlationId)) {
+        throw RangeError("'version' must be >= '2020-02-10' when providing 'preauthorizedAgentObjectId' or 'correlationId'.");
+    }
+    blobSASSignatureValues.version = version;
+    return blobSASSignatureValues;
+}
+
 /**
  * A BlobClient represents a URL to an Azure Storage blob; the blob may be a block blob,
  * append blob, or page blob.
@@ -42852,6 +44194,8 @@ var BlobClient = /** @class */ (function (_super) {
         _this = _super.call(this, url, pipeline) || this;
         (_a = _this.getBlobAndContainerNamesFromUrl(), _this._name = _a.blobName, _this._containerName = _a.containerName);
         _this.blobContext = new Blob$1(_this.storageClientContext);
+        _this._snapshot = getURLParameter(_this.url, URLConstants.Parameters.SNAPSHOT);
+        _this._versionId = getURLParameter(_this.url, URLConstants.Parameters.VERSIONID);
         return _this;
     }
     Object.defineProperty(BlobClient.prototype, "name", {
@@ -43066,7 +44410,6 @@ var BlobClient = /** @class */ (function (_super) {
                                     }
                                 });
                             }); }, offset, res_1.contentLength, {
-                                abortSignal: options.abortSignal,
                                 maxRetryRequests: options.maxRetryRequests,
                                 onProgress: options.onProgress
                             })];
@@ -43459,6 +44802,7 @@ var BlobClient = /** @class */ (function (_super) {
                         _c.trys.push([1, 3, 4, 5]);
                         return [4 /*yield*/, this.blobContext.setTags({
                                 abortSignal: options.abortSignal,
+                                leaseAccessConditions: options.conditions,
                                 modifiedAccessConditions: tslib.__assign(tslib.__assign({}, options.conditions), { ifTags: (_a = options.conditions) === null || _a === void 0 ? void 0 : _a.tagConditions }),
                                 spanOptions: spanOptions,
                                 tags: toBlobTags(tags)
@@ -43500,6 +44844,7 @@ var BlobClient = /** @class */ (function (_super) {
                         _c.trys.push([1, 3, 4, 5]);
                         return [4 /*yield*/, this.blobContext.getTags({
                                 abortSignal: options.abortSignal,
+                                leaseAccessConditions: options.conditions,
                                 modifiedAccessConditions: tslib.__assign(tslib.__assign({}, options.conditions), { ifTags: (_a = options.conditions) === null || _a === void 0 ? void 0 : _a.tagConditions }),
                                 spanOptions: spanOptions
                             })];
@@ -44067,10 +45412,7 @@ var BlobClient = /** @class */ (function (_super) {
             // Azure Storage Server will replace "\" with "/" in the blob names
             //   doing the same in the SDK side so that the user doesn't have to replace "\" instances in the blobName
             blobName = blobName.replace(/\\/g, "/");
-            if (!blobName) {
-                throw new Error("Provided blobName is invalid.");
-            }
-            else if (!containerName) {
+            if (!containerName) {
                 throw new Error("Provided containerName is invalid.");
             }
             return { blobName: blobName, containerName: containerName };
@@ -44140,6 +45482,28 @@ var BlobClient = /** @class */ (function (_super) {
                     case 5: return [2 /*return*/];
                 }
             });
+        });
+    };
+    /**
+     * Only available for BlobClient constructed with a shared key credential.
+     *
+     * Generates a Blob Service Shared Access Signature (SAS) URI based on the client properties
+     * and parameters passed in. The SAS is signed by the shared key credential of the client.
+     *
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas
+     *
+     * @param {BlobGenerateSasUrlOptions} options Optional parameters.
+     * @returns {Promise<string>} The SAS URI consisting of the URI to the resource represented by this client, followed by the generated SAS token.
+     * @memberof BlobClient
+     */
+    BlobClient.prototype.generateSasUrl = function (options) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (!(_this.credential instanceof StorageSharedKeyCredential)) {
+                throw new RangeError("Can only generate the SAS when the client is initialized with a shared key credential");
+            }
+            var sas = generateBlobSASQueryParameters(tslib.__assign({ containerName: _this._containerName, blobName: _this._name, snapshotTime: _this._snapshot, versionId: _this._versionId }, options), _this.credential).toString();
+            resolve(appendToURLQuery(_this.url, sas));
         });
     };
     return BlobClient;
@@ -44741,6 +46105,63 @@ var BlockBlobClient = /** @class */ (function (_super) {
         });
     };
     /**
+     * Creates a new Block Blob where the contents of the blob are read from a given URL.
+     * This API is supported beginning with the 2020-04-08 version. Partial updates
+     * are not supported with Put Blob from URL; the content of an existing blob is overwritten with
+     * the content of the new blob.  To perform partial updates to a block blob’s contents using a
+     * source URL, use {@link stageBlockFromURL} and {@link commitBlockList}.
+     *
+     * @param {string} sourceURL Specifies the URL of the blob. The value
+     *                           may be a URL of up to 2 KB in length that specifies a blob.
+     *                           The value should be URL-encoded as it would appear
+     *                           in a request URI. The source blob must either be public
+     *                           or must be authenticated via a shared access signature.
+     *                           If the source blob is public, no authentication is required
+     *                           to perform the operation. Here are some examples of source object URLs:
+     *                           - https://myaccount.blob.core.windows.net/mycontainer/myblob
+     *                           - https://myaccount.blob.core.windows.net/mycontainer/myblob?snapshot=<DateTime>
+     * @param {BlockBlobSyncUploadFromURLOptions} [options={}] Optional parameters.
+     * @returns Promise<Models.BlockBlobPutBlobFromUrlResponse>
+     * @memberof BlockBlobClient
+     */
+    BlockBlobClient.prototype.syncUploadFromURL = function (sourceURL, options) {
+        var _a, _b, _c, _d, _e;
+        if (options === void 0) { options = {}; }
+        return tslib.__awaiter(this, void 0, void 0, function () {
+            var _f, span, spanOptions, e_25;
+            return tslib.__generator(this, function (_g) {
+                switch (_g.label) {
+                    case 0:
+                        options.conditions = options.conditions || {};
+                        _f = createSpan("BlockBlobClient-syncUploadFromURL", options.tracingOptions), span = _f.span, spanOptions = _f.spanOptions;
+                        _g.label = 1;
+                    case 1:
+                        _g.trys.push([1, 3, 4, 5]);
+                        ensureCpkIfSpecified(options.customerProvidedKey, this.isHttps);
+                        return [4 /*yield*/, this.blockBlobContext.putBlobFromUrl(0, sourceURL, tslib.__assign(tslib.__assign({}, options), { leaseAccessConditions: options.conditions, modifiedAccessConditions: tslib.__assign(tslib.__assign({}, options.conditions), { ifTags: options.conditions.tagConditions }), sourceModifiedAccessConditions: {
+                                    sourceIfMatch: (_a = options.sourceConditions) === null || _a === void 0 ? void 0 : _a.ifMatch,
+                                    sourceIfModifiedSince: (_b = options.sourceConditions) === null || _b === void 0 ? void 0 : _b.ifModifiedSince,
+                                    sourceIfNoneMatch: (_c = options.sourceConditions) === null || _c === void 0 ? void 0 : _c.ifNoneMatch,
+                                    sourceIfUnmodifiedSince: (_d = options.sourceConditions) === null || _d === void 0 ? void 0 : _d.ifUnmodifiedSince,
+                                    sourceIfTags: (_e = options.sourceConditions) === null || _e === void 0 ? void 0 : _e.tagConditions
+                                }, cpkInfo: options.customerProvidedKey, tier: toAccessTier(options.tier), blobTagsString: toBlobTagsString(options.tags), spanOptions: spanOptions }))];
+                    case 2: return [2 /*return*/, _g.sent()];
+                    case 3:
+                        e_25 = _g.sent();
+                        span.setStatus({
+                            code: api.CanonicalCode.UNKNOWN,
+                            message: e_25.message
+                        });
+                        throw e_25;
+                    case 4:
+                        span.end();
+                        return [7 /*endfinally*/];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    /**
      * Uploads the specified block to the block blob's "staging area" to be later
      * committed by a call to commitBlockList.
      * @see https://docs.microsoft.com/rest/api/storageservices/put-block
@@ -44755,7 +46176,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
     BlockBlobClient.prototype.stageBlock = function (blockId, body, contentLength, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_25;
+            var _a, span, spanOptions, e_26;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -44776,12 +46197,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_25 = _b.sent();
+                        e_26 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_25.message
+                            message: e_26.message
                         });
-                        throw e_25;
+                        throw e_26;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -44816,7 +46237,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
         if (offset === void 0) { offset = 0; }
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_26;
+            var _a, span, spanOptions, e_27;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -44837,12 +46258,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_26 = _b.sent();
+                        e_27 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_26.message
+                            message: e_27.message
                         });
-                        throw e_26;
+                        throw e_27;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -44868,7 +46289,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_27;
+            var _b, span, spanOptions, e_28;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -44892,12 +46313,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_27 = _c.sent();
+                        e_28 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_27.message
+                            message: e_28.message
                         });
-                        throw e_27;
+                        throw e_28;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -44921,7 +46342,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, res, e_28;
+            var _b, span, spanOptions, res, e_29;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -44945,12 +46366,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                         }
                         return [2 /*return*/, res];
                     case 3:
-                        e_28 = _c.sent();
+                        e_29 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_28.message
+                            message: e_29.message
                         });
-                        throw e_28;
+                        throw e_29;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45030,7 +46451,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
     BlockBlobClient.prototype.uploadBrowserData = function (browserData, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, browserBlob_2, e_29;
+            var _a, span, spanOptions, browserBlob_2, e_30;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -45042,12 +46463,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                         return [4 /*yield*/, this.uploadSeekableInternal(function (offset, size) { return browserBlob_2.slice(offset, offset + size); }, browserBlob_2.size, tslib.__assign(tslib.__assign({}, options), { tracingOptions: tslib.__assign(tslib.__assign({}, options.tracingOptions), { spanOptions: spanOptions }) }))];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_29 = _b.sent();
+                        e_30 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_29.message
+                            message: e_30.message
                         });
-                        throw e_29;
+                        throw e_30;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45075,7 +46496,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
     BlockBlobClient.prototype.uploadSeekableInternal = function (bodyFactory, size, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, numBlocks_1, blockList_1, blockIDPrefix_1, transferProgress_2, batch, _loop_2, i, e_30;
+            var _a, span, spanOptions, numBlocks_1, blockList_1, blockIDPrefix_1, transferProgress_2, batch, _loop_2, i, e_31;
             var _this = this;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
@@ -45167,12 +46588,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                         _b.sent();
                         return [2 /*return*/, this.commitBlockList(blockList_1, tslib.__assign(tslib.__assign({}, options), { tracingOptions: tslib.__assign(tslib.__assign({}, options.tracingOptions), { spanOptions: spanOptions }) }))];
                     case 5:
-                        e_30 = _b.sent();
+                        e_31 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_30.message
+                            message: e_31.message
                         });
-                        throw e_30;
+                        throw e_31;
                     case 6:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45198,7 +46619,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
     BlockBlobClient.prototype.uploadFile = function (filePath, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, size, e_31;
+            var _a, span, spanOptions, size, e_32;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -45220,12 +46641,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                             }, size, tslib.__assign(tslib.__assign({}, options), { tracingOptions: tslib.__assign(tslib.__assign({}, options.tracingOptions), { spanOptions: spanOptions }) }))];
                     case 3: return [2 /*return*/, _b.sent()];
                     case 4:
-                        e_31 = _b.sent();
+                        e_32 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_31.message
+                            message: e_32.message
                         });
-                        throw e_31;
+                        throw e_32;
                     case 5:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45256,7 +46677,7 @@ var BlockBlobClient = /** @class */ (function (_super) {
         if (maxConcurrency === void 0) { maxConcurrency = 5; }
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, blockNum_1, blockIDPrefix_2, transferProgress_3, blockList_2, scheduler, e_32;
+            var _a, span, spanOptions, blockNum_1, blockIDPrefix_2, transferProgress_3, blockList_2, scheduler, e_33;
             var _this = this;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
@@ -45310,12 +46731,12 @@ var BlockBlobClient = /** @class */ (function (_super) {
                         return [4 /*yield*/, this.commitBlockList(blockList_2, tslib.__assign(tslib.__assign({}, options), { tracingOptions: tslib.__assign(tslib.__assign({}, options.tracingOptions), { spanOptions: spanOptions }) }))];
                     case 3: return [2 /*return*/, _b.sent()];
                     case 4:
-                        e_32 = _b.sent();
+                        e_33 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_32.message
+                            message: e_33.message
                         });
-                        throw e_32;
+                        throw e_33;
                     case 5:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45422,7 +46843,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_33;
+            var _b, span, spanOptions, e_34;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45447,12 +46868,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_33 = _c.sent();
+                        e_34 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_33.message
+                            message: e_34.message
                         });
-                        throw e_33;
+                        throw e_34;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45476,7 +46897,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a, _b;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _c, span, spanOptions, conditions, res, e_34;
+            var _c, span, spanOptions, conditions, res, e_35;
             return tslib.__generator(this, function (_d) {
                 switch (_d.label) {
                     case 0:
@@ -45491,19 +46912,19 @@ var PageBlobClient = /** @class */ (function (_super) {
                         return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: true }, res), { _response: res._response // _response is made non-enumerable
                              })];
                     case 3:
-                        e_34 = _d.sent();
-                        if (((_a = e_34.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "BlobAlreadyExists") {
+                        e_35 = _d.sent();
+                        if (((_a = e_35.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "BlobAlreadyExists") {
                             span.setStatus({
                                 code: api.CanonicalCode.ALREADY_EXISTS,
                                 message: "Expected exception when creating a blob only if it does not already exist."
                             });
-                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_34.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_34.response })];
+                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_35.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_35.response })];
                         }
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_34.message
+                            message: e_35.message
                         });
-                        throw e_34;
+                        throw e_35;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45527,7 +46948,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_35;
+            var _b, span, spanOptions, e_36;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45552,12 +46973,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_35 = _c.sent();
+                        e_36 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_35.message
+                            message: e_36.message
                         });
-                        throw e_35;
+                        throw e_36;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45583,7 +47004,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_36;
+            var _b, span, spanOptions, e_37;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45613,12 +47034,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_36 = _c.sent();
+                        e_37 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_36.message
+                            message: e_37.message
                         });
-                        throw e_36;
+                        throw e_37;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45642,7 +47063,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         if (offset === void 0) { offset = 0; }
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_37;
+            var _b, span, spanOptions, e_38;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45663,12 +47084,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_37 = _c.sent();
+                        e_38 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_37.message
+                            message: e_38.message
                         });
-                        throw e_37;
+                        throw e_38;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45692,7 +47113,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         if (offset === void 0) { offset = 0; }
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_38;
+            var _b, span, spanOptions, e_39;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45712,12 +47133,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                                 .then(rangeResponseFromModel)];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_38 = _c.sent();
+                        e_39 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_38.message
+                            message: e_39.message
                         });
-                        throw e_38;
+                        throw e_39;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45741,7 +47162,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_39;
+            var _b, span, spanOptions, e_40;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45762,12 +47183,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                                 .then(rangeResponseFromModel)];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_39 = _c.sent();
+                        e_40 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_39.message
+                            message: e_40.message
                         });
-                        throw e_39;
+                        throw e_40;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45791,7 +47212,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_40;
+            var _b, span, spanOptions, e_41;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45812,12 +47233,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                                 .then(rangeResponseFromModel)];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_40 = _c.sent();
+                        e_41 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_40.message
+                            message: e_41.message
                         });
-                        throw e_40;
+                        throw e_41;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45839,7 +47260,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_41;
+            var _b, span, spanOptions, e_42;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45857,12 +47278,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_41 = _c.sent();
+                        e_42 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_41.message
+                            message: e_42.message
                         });
-                        throw e_41;
+                        throw e_42;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45885,7 +47306,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_42;
+            var _b, span, spanOptions, e_43;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45903,12 +47324,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_42 = _c.sent();
+                        e_43 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_42.message
+                            message: e_43.message
                         });
-                        throw e_42;
+                        throw e_43;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -45935,7 +47356,7 @@ var PageBlobClient = /** @class */ (function (_super) {
         var _a;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _b, span, spanOptions, e_43;
+            var _b, span, spanOptions, e_44;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -45950,12 +47371,12 @@ var PageBlobClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_43 = _c.sent();
+                        e_44 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_43.message
+                            message: e_44.message
                         });
-                        throw e_43;
+                        throw e_44;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46040,7 +47461,7 @@ var BlobLeaseClient = /** @class */ (function () {
         var _a, _b, _c, _d, _e, _f;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _g, span, spanOptions, e_44;
+            var _g, span, spanOptions, e_45;
             return tslib.__generator(this, function (_h) {
                 switch (_h.label) {
                     case 0:
@@ -46062,12 +47483,12 @@ var BlobLeaseClient = /** @class */ (function () {
                             })];
                     case 2: return [2 /*return*/, _h.sent()];
                     case 3:
-                        e_44 = _h.sent();
+                        e_45 = _h.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_44.message
+                            message: e_45.message
                         });
-                        throw e_44;
+                        throw e_45;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46091,7 +47512,7 @@ var BlobLeaseClient = /** @class */ (function () {
         var _a, _b, _c, _d, _e, _f;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _g, span, spanOptions, response, e_45;
+            var _g, span, spanOptions, response, e_46;
             return tslib.__generator(this, function (_h) {
                 switch (_h.label) {
                     case 0:
@@ -46114,12 +47535,12 @@ var BlobLeaseClient = /** @class */ (function () {
                         this._leaseId = proposedLeaseId;
                         return [2 /*return*/, response];
                     case 3:
-                        e_45 = _h.sent();
+                        e_46 = _h.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_45.message
+                            message: e_46.message
                         });
-                        throw e_45;
+                        throw e_46;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46143,7 +47564,7 @@ var BlobLeaseClient = /** @class */ (function () {
         var _a, _b, _c, _d, _e, _f;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _g, span, spanOptions, e_46;
+            var _g, span, spanOptions, e_47;
             return tslib.__generator(this, function (_h) {
                 switch (_h.label) {
                     case 0:
@@ -46163,12 +47584,12 @@ var BlobLeaseClient = /** @class */ (function () {
                             })];
                     case 2: return [2 /*return*/, _h.sent()];
                     case 3:
-                        e_46 = _h.sent();
+                        e_47 = _h.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_46.message
+                            message: e_47.message
                         });
-                        throw e_46;
+                        throw e_47;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46191,7 +47612,7 @@ var BlobLeaseClient = /** @class */ (function () {
         var _a, _b, _c, _d, _e, _f;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _g, span, spanOptions, e_47;
+            var _g, span, spanOptions, e_48;
             return tslib.__generator(this, function (_h) {
                 switch (_h.label) {
                     case 0:
@@ -46211,12 +47632,12 @@ var BlobLeaseClient = /** @class */ (function () {
                             })];
                     case 2: return [2 /*return*/, _h.sent()];
                     case 3:
-                        e_47 = _h.sent();
+                        e_48 = _h.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_47.message
+                            message: e_48.message
                         });
-                        throw e_47;
+                        throw e_48;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46242,7 +47663,7 @@ var BlobLeaseClient = /** @class */ (function () {
         var _a, _b, _c, _d, _e, _f;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _g, span, spanOptions, operationOptions, e_48;
+            var _g, span, spanOptions, operationOptions, e_49;
             return tslib.__generator(this, function (_h) {
                 switch (_h.label) {
                     case 0:
@@ -46264,12 +47685,12 @@ var BlobLeaseClient = /** @class */ (function () {
                         return [4 /*yield*/, this._containerOrBlobOperation.breakLease(operationOptions)];
                     case 2: return [2 /*return*/, _h.sent()];
                     case 3:
-                        e_48 = _h.sent();
+                        e_49 = _h.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_48.message
+                            message: e_49.message
                         });
-                        throw e_48;
+                        throw e_49;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46374,7 +47795,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.create = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_49;
+            var _a, span, spanOptions, e_50;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46388,12 +47809,12 @@ var ContainerClient = /** @class */ (function (_super) {
                     // this will filter out unwanted properties from the response object into result object
                     return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_49 = _b.sent();
+                        e_50 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_49.message
+                            message: e_50.message
                         });
-                        throw e_49;
+                        throw e_50;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46415,7 +47836,7 @@ var ContainerClient = /** @class */ (function (_super) {
         var _a, _b;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _c, span, spanOptions, res, e_50;
+            var _c, span, spanOptions, res, e_51;
             return tslib.__generator(this, function (_d) {
                 switch (_d.label) {
                     case 0:
@@ -46429,19 +47850,19 @@ var ContainerClient = /** @class */ (function (_super) {
                         return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: true }, res), { _response: res._response // _response is made non-enumerable
                              })];
                     case 3:
-                        e_50 = _d.sent();
-                        if (((_a = e_50.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "ContainerAlreadyExists") {
+                        e_51 = _d.sent();
+                        if (((_a = e_51.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "ContainerAlreadyExists") {
                             span.setStatus({
                                 code: api.CanonicalCode.ALREADY_EXISTS,
                                 message: "Expected exception when creating a container only if it does not already exist."
                             });
-                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_50.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_50.response })];
+                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_51.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_51.response })];
                         }
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_50.message
+                            message: e_51.message
                         });
-                        throw e_50;
+                        throw e_51;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46464,7 +47885,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.exists = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_51;
+            var _a, span, spanOptions, e_52;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46480,8 +47901,8 @@ var ContainerClient = /** @class */ (function (_super) {
                         _b.sent();
                         return [2 /*return*/, true];
                     case 3:
-                        e_51 = _b.sent();
-                        if (e_51.statusCode === 404) {
+                        e_52 = _b.sent();
+                        if (e_52.statusCode === 404) {
                             span.setStatus({
                                 code: api.CanonicalCode.NOT_FOUND,
                                 message: "Expected exception when checking container existence"
@@ -46490,9 +47911,9 @@ var ContainerClient = /** @class */ (function (_super) {
                         }
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_51.message
+                            message: e_52.message
                         });
-                        throw e_51;
+                        throw e_52;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46567,7 +47988,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.getProperties = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_52;
+            var _a, span, spanOptions, e_53;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46581,12 +48002,12 @@ var ContainerClient = /** @class */ (function (_super) {
                         return [4 /*yield*/, this.containerContext.getProperties(tslib.__assign(tslib.__assign({ abortSignal: options.abortSignal }, options.conditions), { spanOptions: spanOptions }))];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_52 = _b.sent();
+                        e_53 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_52.message
+                            message: e_53.message
                         });
-                        throw e_52;
+                        throw e_53;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46607,7 +48028,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.delete = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_53;
+            var _a, span, spanOptions, e_54;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46626,12 +48047,12 @@ var ContainerClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_53 = _b.sent();
+                        e_54 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_53.message
+                            message: e_54.message
                         });
-                        throw e_53;
+                        throw e_54;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46653,7 +48074,7 @@ var ContainerClient = /** @class */ (function (_super) {
         var _a, _b;
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _c, span, spanOptions, res, e_54;
+            var _c, span, spanOptions, res, e_55;
             return tslib.__generator(this, function (_d) {
                 switch (_d.label) {
                     case 0:
@@ -46667,19 +48088,19 @@ var ContainerClient = /** @class */ (function (_super) {
                         return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: true }, res), { _response: res._response // _response is made non-enumerable
                              })];
                     case 3:
-                        e_54 = _d.sent();
-                        if (((_a = e_54.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "ContainerNotFound") {
+                        e_55 = _d.sent();
+                        if (((_a = e_55.details) === null || _a === void 0 ? void 0 : _a.errorCode) === "ContainerNotFound") {
                             span.setStatus({
                                 code: api.CanonicalCode.NOT_FOUND,
                                 message: "Expected exception when deleting a container only if it exists."
                             });
-                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_54.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_54.response })];
+                            return [2 /*return*/, tslib.__assign(tslib.__assign({ succeeded: false }, (_b = e_55.response) === null || _b === void 0 ? void 0 : _b.parsedHeaders), { _response: e_55.response })];
                         }
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_54.message
+                            message: e_55.message
                         });
-                        throw e_54;
+                        throw e_55;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46705,7 +48126,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.setMetadata = function (metadata, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_55;
+            var _a, span, spanOptions, e_56;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46728,12 +48149,12 @@ var ContainerClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_55 = _b.sent();
+                        e_56 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_55.message
+                            message: e_56.message
                         });
-                        throw e_55;
+                        throw e_56;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46758,7 +48179,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.getAccessPolicy = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, response, res, _i, response_1, identifier, accessPolicy, e_56;
+            var _a, span, spanOptions, response, res, _i, response_1, identifier, accessPolicy, e_57;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46809,12 +48230,12 @@ var ContainerClient = /** @class */ (function (_super) {
                         }
                         return [2 /*return*/, res];
                     case 3:
-                        e_56 = _b.sent();
+                        e_57 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_56.message
+                            message: e_57.message
                         });
-                        throw e_56;
+                        throw e_57;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46845,7 +48266,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.setAccessPolicy = function (access, containerAcl, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, acl, _i, _b, identifier, e_57;
+            var _a, span, spanOptions, acl, _i, _b, identifier, e_58;
             return tslib.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
@@ -46880,12 +48301,12 @@ var ContainerClient = /** @class */ (function (_super) {
                             })];
                     case 2: return [2 /*return*/, _c.sent()];
                     case 3:
-                        e_57 = _c.sent();
+                        e_58 = _c.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_57.message
+                            message: e_58.message
                         });
-                        throw e_57;
+                        throw e_58;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46930,7 +48351,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.uploadBlockBlob = function (blobName, body, contentLength, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, blockBlobClient, response, e_58;
+            var _a, span, spanOptions, blockBlobClient, response, e_59;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46947,12 +48368,12 @@ var ContainerClient = /** @class */ (function (_super) {
                                 response: response
                             }];
                     case 3:
-                        e_58 = _b.sent();
+                        e_59 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_58.message
+                            message: e_59.message
                         });
-                        throw e_58;
+                        throw e_59;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -46976,7 +48397,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.deleteBlob = function (blobName, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, blobClient, e_59;
+            var _a, span, spanOptions, blobClient, e_60;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -46991,12 +48412,12 @@ var ContainerClient = /** @class */ (function (_super) {
                         return [4 /*yield*/, blobClient.delete(tslib.__assign(tslib.__assign({}, options), { tracingOptions: tslib.__assign(tslib.__assign({}, options.tracingOptions), { spanOptions: spanOptions }) }))];
                     case 2: return [2 /*return*/, _b.sent()];
                     case 3:
-                        e_59 = _b.sent();
+                        e_60 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_59.message
+                            message: e_60.message
                         });
-                        throw e_59;
+                        throw e_60;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -47020,7 +48441,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.listBlobFlatSegment = function (marker, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, response, wrappedResponse, e_60;
+            var _a, span, spanOptions, response, wrappedResponse, e_61;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -47037,12 +48458,12 @@ var ContainerClient = /** @class */ (function (_super) {
                                 }) }) });
                         return [2 /*return*/, wrappedResponse];
                     case 3:
-                        e_60 = _b.sent();
+                        e_61 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_60.message
+                            message: e_61.message
                         });
-                        throw e_60;
+                        throw e_61;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -47067,7 +48488,7 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.listBlobHierarchySegment = function (delimiter, marker, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, response, wrappedResponse, e_61;
+            var _a, span, spanOptions, response, wrappedResponse, e_62;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -47084,12 +48505,12 @@ var ContainerClient = /** @class */ (function (_super) {
                                 }) }) });
                         return [2 /*return*/, wrappedResponse];
                     case 3:
-                        e_61 = _b.sent();
+                        e_62 = _b.sent();
                         span.setStatus({
                             code: api.CanonicalCode.UNKNOWN,
-                            message: e_61.message
+                            message: e_62.message
                         });
-                        throw e_61;
+                        throw e_62;
                     case 4:
                         span.end();
                         return [7 /*endfinally*/];
@@ -47151,8 +48572,8 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.listItems = function (options) {
         if (options === void 0) { options = {}; }
         return tslib.__asyncGenerator(this, arguments, function listItems_1() {
-            var marker, _a, _b, listBlobsFlatSegmentResponse, e_62_1;
-            var e_62, _c;
+            var marker, _a, _b, listBlobsFlatSegmentResponse, e_63_1;
+            var e_63, _c;
             return tslib.__generator(this, function (_d) {
                 switch (_d.label) {
                     case 0:
@@ -47171,8 +48592,8 @@ var ContainerClient = /** @class */ (function (_super) {
                     case 5: return [3 /*break*/, 1];
                     case 6: return [3 /*break*/, 13];
                     case 7:
-                        e_62_1 = _d.sent();
-                        e_62 = { error: e_62_1 };
+                        e_63_1 = _d.sent();
+                        e_63 = { error: e_63_1 };
                         return [3 /*break*/, 13];
                     case 8:
                         _d.trys.push([8, , 11, 12]);
@@ -47183,7 +48604,7 @@ var ContainerClient = /** @class */ (function (_super) {
                         _d.label = 10;
                     case 10: return [3 /*break*/, 12];
                     case 11:
-                        if (e_62) throw e_62.error;
+                        if (e_63) throw e_63.error;
                         return [7 /*endfinally*/];
                     case 12: return [7 /*endfinally*/];
                     case 13: return [2 /*return*/];
@@ -47372,8 +48793,8 @@ var ContainerClient = /** @class */ (function (_super) {
     ContainerClient.prototype.listItemsByHierarchy = function (delimiter, options) {
         if (options === void 0) { options = {}; }
         return tslib.__asyncGenerator(this, arguments, function listItemsByHierarchy_1() {
-            var marker, _a, _b, listBlobsHierarchySegmentResponse, segment, _i, _c, prefix, _d, _e, blob, e_63_1;
-            var e_63, _f;
+            var marker, _a, _b, listBlobsHierarchySegmentResponse, segment, _i, _c, prefix, _d, _e, blob, e_64_1;
+            var e_64, _f;
             return tslib.__generator(this, function (_g) {
                 switch (_g.label) {
                     case 0:
@@ -47416,8 +48837,8 @@ var ContainerClient = /** @class */ (function (_super) {
                     case 12: return [3 /*break*/, 1];
                     case 13: return [3 /*break*/, 20];
                     case 14:
-                        e_63_1 = _g.sent();
-                        e_63 = { error: e_63_1 };
+                        e_64_1 = _g.sent();
+                        e_64 = { error: e_64_1 };
                         return [3 /*break*/, 20];
                     case 15:
                         _g.trys.push([15, , 18, 19]);
@@ -47428,7 +48849,7 @@ var ContainerClient = /** @class */ (function (_super) {
                         _g.label = 17;
                     case 17: return [3 /*break*/, 19];
                     case 18:
-                        if (e_63) throw e_63.error;
+                        if (e_64) throw e_64.error;
                         return [7 /*endfinally*/];
                     case 19: return [7 /*endfinally*/];
                     case 20: return [2 /*return*/];
@@ -47468,7 +48889,7 @@ var ContainerClient = /** @class */ (function (_super) {
      *   }
      *   entity = await iter.next();
      * }
-     * ```js
+     * ```
      *
      * Example using `byPage()`:
      *
@@ -47513,8 +48934,7 @@ var ContainerClient = /** @class */ (function (_super) {
      * @param {ContainerListBlobsOptions} [options={}] Options to list blobs operation.
      * @returns {(PagedAsyncIterableIterator<
      *   { kind: "prefix" } & BlobPrefix | { kind: "blob" } & BlobItem,
-     *     ContainerListBlobHierarchySegmentResponse
-     *   >)}
+     *     ContainerListBlobHierarchySegmentResponse>)}
      * @memberof ContainerClient
      */
     ContainerClient.prototype.listBlobsByHierarchy = function (delimiter, options) {
@@ -47616,6 +49036,28 @@ var ContainerClient = /** @class */ (function (_super) {
             throw new Error("Unable to extract containerName with provided information.");
         }
     };
+    /**
+     * Only available for ContainerClient constructed with a shared key credential.
+     *
+     * Generates a Blob Container Service Shared Access Signature (SAS) URI based on the client properties
+     * and parameters passed in. The SAS is signed by the shared key credential of the client.
+     *
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas
+     *
+     * @param {ContainerGenerateSasUrlOptions} options Optional parameters.
+     * @returns {Promise<string>} The SAS URI consisting of the URI to the resource represented by this client, followed by the generated SAS token.
+     * @memberof ContainerClient
+     */
+    ContainerClient.prototype.generateSasUrl = function (options) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (!(_this.credential instanceof StorageSharedKeyCredential)) {
+                throw new RangeError("Can only generate the SAS when the client is initialized with a shared key credential");
+            }
+            var sas = generateBlobSASQueryParameters(tslib.__assign({ containerName: _this._containerName }, options), _this.credential).toString();
+            resolve(appendToURLQuery(_this.url, sas));
+        });
+    };
     return ContainerClient;
 }(StorageClient));
 
@@ -47695,8 +49137,7 @@ var BatchResponseParser = /** @class */ (function () {
                         // Parse sub subResponses.
                         for (index = 0; index < subResponseCount; index++) {
                             subResponse = subResponses[index];
-                            deserializedSubResponses[index] = {};
-                            deserializedSubResponse = deserializedSubResponses[index];
+                            deserializedSubResponse = {};
                             deserializedSubResponse.headers = new coreHttp.HttpHeaders();
                             responseLines = subResponse.split("" + HTTP_LINE_ENDING);
                             subRespHeaderStartFound = false;
@@ -47748,8 +49189,20 @@ var BatchResponseParser = /** @class */ (function () {
                                     deserializedSubResponse.bodyAsText += responseLine;
                                 }
                             } // Inner for end
-                            if (contentId != NOT_FOUND) {
+                            // The response will contain the Content-ID header for each corresponding subrequest response to use for tracking.
+                            // The Content-IDs are set to a valid index in the subrequests we sent. In the status code 202 path, we could expect it
+                            // to be 1-1 mapping from the [0, subRequests.size) to the Content-IDs returned. If not, we simply don't return that
+                            // unexpected subResponse in the parsed reponse and we can always look it up in the raw response for debugging purpose.
+                            if (contentId != NOT_FOUND &&
+                                Number.isInteger(contentId) &&
+                                contentId >= 0 &&
+                                contentId < this.subRequests.size &&
+                                deserializedSubResponses[contentId] === undefined) {
                                 deserializedSubResponse._request = this.subRequests.get(contentId);
+                                deserializedSubResponses[contentId] = deserializedSubResponse;
+                            }
+                            else {
+                                logger.error("subResponses[" + index + "] is dropped as the Content-ID is not found or invalid, Content-ID: " + contentId);
                             }
                             if (subRespFailed) {
                                 subResponsesFailedCount++;
@@ -48087,7 +49540,7 @@ var InnerBatchRequest = /** @class */ (function () {
         factories[1] = new BatchHeaderFilterPolicyFactory(); // Use batch header filter policy to exclude unnecessary headers
         if (!isAnonymousCreds) {
             factories[2] = coreHttp.isTokenCredential(credential)
-                ? coreHttp.bearerTokenAuthenticationPolicy(credential, StorageOAuthScopes)
+                ? attachCredential(coreHttp.bearerTokenAuthenticationPolicy(credential, StorageOAuthScopes), credential)
                 : credential;
         }
         factories[policyFactoryLength - 1] = new BatchRequestAssemblePolicyFactory(this); // Use batch assemble policy to assemble request and intercept request from going to wire
@@ -48379,6 +49832,500 @@ var BlobBatchClient = /** @class */ (function () {
     };
     return BlobBatchClient;
 }());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * This is a helper class to construct a string representing the permissions granted by an AccountSAS. Setting a value
+ * to true means that any SAS which uses these permissions will grant permissions for that operation. Once all the
+ * values are set, this should be serialized with toString and set as the permissions field on an
+ * {@link AccountSASSignatureValues} object. It is possible to construct the permissions string without this class, but
+ * the order of the permissions is particular and this class guarantees correctness.
+ *
+ * @export
+ * @class AccountSASPermissions
+ */
+var AccountSASPermissions = /** @class */ (function () {
+    function AccountSASPermissions() {
+        /**
+         * Permission to read resources and list queues and tables granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.read = false;
+        /**
+         * Permission to write resources granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.write = false;
+        /**
+         * Permission to create blobs and files granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.delete = false;
+        /**
+         * Permission to delete versions granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.deleteVersion = false;
+        /**
+         * Permission to list blob containers, blobs, shares, directories, and files granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.list = false;
+        /**
+         * Permission to add messages, table entities, and append to blobs granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.add = false;
+        /**
+         * Permission to create blobs and files granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.create = false;
+        /**
+         * Permissions to update messages and table entities granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.update = false;
+        /**
+         * Permission to get and delete messages granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.process = false;
+        /**
+         * Specfies Tag access granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.tag = false;
+        /**
+         * Permission to filter blobs.
+         *
+         * @type {boolean}
+         * @memberof AccountSASPermissions
+         */
+        this.filter = false;
+    }
+    /**
+     * Parse initializes the AccountSASPermissions fields from a string.
+     *
+     * @static
+     * @param {string} permissions
+     * @returns {AccountSASPermissions}
+     * @memberof AccountSASPermissions
+     */
+    AccountSASPermissions.parse = function (permissions) {
+        var accountSASPermissions = new AccountSASPermissions();
+        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
+            var c = permissions_1[_i];
+            switch (c) {
+                case "r":
+                    accountSASPermissions.read = true;
+                    break;
+                case "w":
+                    accountSASPermissions.write = true;
+                    break;
+                case "d":
+                    accountSASPermissions.delete = true;
+                    break;
+                case "x":
+                    accountSASPermissions.deleteVersion = true;
+                    break;
+                case "l":
+                    accountSASPermissions.list = true;
+                    break;
+                case "a":
+                    accountSASPermissions.add = true;
+                    break;
+                case "c":
+                    accountSASPermissions.create = true;
+                    break;
+                case "u":
+                    accountSASPermissions.update = true;
+                    break;
+                case "p":
+                    accountSASPermissions.process = true;
+                    break;
+                case "t":
+                    accountSASPermissions.tag = true;
+                    break;
+                case "f":
+                    accountSASPermissions.filter = true;
+                    break;
+                default:
+                    throw new RangeError("Invalid permission character: " + c);
+            }
+        }
+        return accountSASPermissions;
+    };
+    /**
+     * Creates a {@link AccountSASPermissions} from a raw object which contains same keys as it
+     * and boolean values for them.
+     *
+     * @static
+     * @param {AccountSASPermissionsLike} permissionLike
+     * @returns {AccountSASPermissions}
+     * @memberof AccountSASPermissions
+     */
+    AccountSASPermissions.from = function (permissionLike) {
+        var accountSASPermissions = new AccountSASPermissions();
+        if (permissionLike.read) {
+            accountSASPermissions.read = true;
+        }
+        if (permissionLike.write) {
+            accountSASPermissions.write = true;
+        }
+        if (permissionLike.delete) {
+            accountSASPermissions.delete = true;
+        }
+        if (permissionLike.deleteVersion) {
+            accountSASPermissions.deleteVersion = true;
+        }
+        if (permissionLike.filter) {
+            accountSASPermissions.filter = true;
+        }
+        if (permissionLike.tag) {
+            accountSASPermissions.tag = true;
+        }
+        if (permissionLike.list) {
+            accountSASPermissions.list = true;
+        }
+        if (permissionLike.add) {
+            accountSASPermissions.add = true;
+        }
+        if (permissionLike.create) {
+            accountSASPermissions.create = true;
+        }
+        if (permissionLike.update) {
+            accountSASPermissions.update = true;
+        }
+        if (permissionLike.process) {
+            accountSASPermissions.process = true;
+        }
+        return accountSASPermissions;
+    };
+    /**
+     * Produces the SAS permissions string for an Azure Storage account.
+     * Call this method to set AccountSASSignatureValues Permissions field.
+     *
+     * Using this method will guarantee the resource types are in
+     * an order accepted by the service.
+     *
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
+     *
+     * @returns {string}
+     * @memberof AccountSASPermissions
+     */
+    AccountSASPermissions.prototype.toString = function () {
+        // The order of the characters should be as specified here to ensure correctness:
+        // https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
+        // Use a string array instead of string concatenating += operator for performance
+        var permissions = [];
+        if (this.read) {
+            permissions.push("r");
+        }
+        if (this.write) {
+            permissions.push("w");
+        }
+        if (this.delete) {
+            permissions.push("d");
+        }
+        if (this.deleteVersion) {
+            permissions.push("x");
+        }
+        if (this.filter) {
+            permissions.push("f");
+        }
+        if (this.tag) {
+            permissions.push("t");
+        }
+        if (this.list) {
+            permissions.push("l");
+        }
+        if (this.add) {
+            permissions.push("a");
+        }
+        if (this.create) {
+            permissions.push("c");
+        }
+        if (this.update) {
+            permissions.push("u");
+        }
+        if (this.process) {
+            permissions.push("p");
+        }
+        return permissions.join("");
+    };
+    return AccountSASPermissions;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * This is a helper class to construct a string representing the resources accessible by an AccountSAS. Setting a value
+ * to true means that any SAS which uses these permissions will grant access to that resource type. Once all the
+ * values are set, this should be serialized with toString and set as the resources field on an
+ * {@link AccountSASSignatureValues} object. It is possible to construct the resources string without this class, but
+ * the order of the resources is particular and this class guarantees correctness.
+ *
+ * @export
+ * @class AccountSASResourceTypes
+ */
+var AccountSASResourceTypes = /** @class */ (function () {
+    function AccountSASResourceTypes() {
+        /**
+         * Permission to access service level APIs granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASResourceTypes
+         */
+        this.service = false;
+        /**
+         * Permission to access container level APIs (Blob Containers, Tables, Queues, File Shares) granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASResourceTypes
+         */
+        this.container = false;
+        /**
+         * Permission to access object level APIs (Blobs, Table Entities, Queue Messages, Files) granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASResourceTypes
+         */
+        this.object = false;
+    }
+    /**
+     * Creates an {@link AccountSASResourceTypes} from the specified resource types string. This method will throw an
+     * Error if it encounters a character that does not correspond to a valid resource type.
+     *
+     * @static
+     * @param {string} resourceTypes
+     * @returns {AccountSASResourceTypes}
+     * @memberof AccountSASResourceTypes
+     */
+    AccountSASResourceTypes.parse = function (resourceTypes) {
+        var accountSASResourceTypes = new AccountSASResourceTypes();
+        for (var _i = 0, resourceTypes_1 = resourceTypes; _i < resourceTypes_1.length; _i++) {
+            var c = resourceTypes_1[_i];
+            switch (c) {
+                case "s":
+                    accountSASResourceTypes.service = true;
+                    break;
+                case "c":
+                    accountSASResourceTypes.container = true;
+                    break;
+                case "o":
+                    accountSASResourceTypes.object = true;
+                    break;
+                default:
+                    throw new RangeError("Invalid resource type: " + c);
+            }
+        }
+        return accountSASResourceTypes;
+    };
+    /**
+     * Converts the given resource types to a string.
+     *
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
+     *
+     * @returns {string}
+     * @memberof AccountSASResourceTypes
+     */
+    AccountSASResourceTypes.prototype.toString = function () {
+        var resourceTypes = [];
+        if (this.service) {
+            resourceTypes.push("s");
+        }
+        if (this.container) {
+            resourceTypes.push("c");
+        }
+        if (this.object) {
+            resourceTypes.push("o");
+        }
+        return resourceTypes.join("");
+    };
+    return AccountSASResourceTypes;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * This is a helper class to construct a string representing the services accessible by an AccountSAS. Setting a value
+ * to true means that any SAS which uses these permissions will grant access to that service. Once all the
+ * values are set, this should be serialized with toString and set as the services field on an
+ * {@link AccountSASSignatureValues} object. It is possible to construct the services string without this class, but
+ * the order of the services is particular and this class guarantees correctness.
+ *
+ * @export
+ * @class AccountSASServices
+ */
+var AccountSASServices = /** @class */ (function () {
+    function AccountSASServices() {
+        /**
+         * Permission to access blob resources granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASServices
+         */
+        this.blob = false;
+        /**
+         * Permission to access file resources granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASServices
+         */
+        this.file = false;
+        /**
+         * Permission to access queue resources granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASServices
+         */
+        this.queue = false;
+        /**
+         * Permission to access table resources granted.
+         *
+         * @type {boolean}
+         * @memberof AccountSASServices
+         */
+        this.table = false;
+    }
+    /**
+     * Creates an {@link AccountSASServices} from the specified services string. This method will throw an
+     * Error if it encounters a character that does not correspond to a valid service.
+     *
+     * @static
+     * @param {string} services
+     * @returns {AccountSASServices}
+     * @memberof AccountSASServices
+     */
+    AccountSASServices.parse = function (services) {
+        var accountSASServices = new AccountSASServices();
+        for (var _i = 0, services_1 = services; _i < services_1.length; _i++) {
+            var c = services_1[_i];
+            switch (c) {
+                case "b":
+                    accountSASServices.blob = true;
+                    break;
+                case "f":
+                    accountSASServices.file = true;
+                    break;
+                case "q":
+                    accountSASServices.queue = true;
+                    break;
+                case "t":
+                    accountSASServices.table = true;
+                    break;
+                default:
+                    throw new RangeError("Invalid service character: " + c);
+            }
+        }
+        return accountSASServices;
+    };
+    /**
+     * Converts the given services to a string.
+     *
+     * @returns {string}
+     * @memberof AccountSASServices
+     */
+    AccountSASServices.prototype.toString = function () {
+        var services = [];
+        if (this.blob) {
+            services.push("b");
+        }
+        if (this.table) {
+            services.push("t");
+        }
+        if (this.queue) {
+            services.push("q");
+        }
+        if (this.file) {
+            services.push("f");
+        }
+        return services.join("");
+    };
+    return AccountSASServices;
+}());
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
+/**
+ * ONLY AVAILABLE IN NODE.JS RUNTIME.
+ *
+ * Generates a {@link SASQueryParameters} object which contains all SAS query parameters needed to make an actual
+ * REST request.
+ *
+ * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
+ *
+ * @param {AccountSASSignatureValues} accountSASSignatureValues
+ * @param {StorageSharedKeyCredential} sharedKeyCredential
+ * @returns {SASQueryParameters}
+ * @memberof AccountSASSignatureValues
+ */
+function generateAccountSASQueryParameters(accountSASSignatureValues, sharedKeyCredential) {
+    var version = accountSASSignatureValues.version
+        ? accountSASSignatureValues.version
+        : SERVICE_VERSION;
+    if (accountSASSignatureValues.permissions &&
+        accountSASSignatureValues.permissions.deleteVersion &&
+        version < "2019-10-10") {
+        throw RangeError("'version' must be >= '2019-10-10' when provided 'x' permission.");
+    }
+    if (accountSASSignatureValues.permissions &&
+        accountSASSignatureValues.permissions.tag &&
+        version < "2019-12-12") {
+        throw RangeError("'version' must be >= '2019-12-12' when provided 't' permission.");
+    }
+    if (accountSASSignatureValues.permissions &&
+        accountSASSignatureValues.permissions.filter &&
+        version < "2019-12-12") {
+        throw RangeError("'version' must be >= '2019-12-12' when provided 'f' permission.");
+    }
+    var parsedPermissions = AccountSASPermissions.parse(accountSASSignatureValues.permissions.toString());
+    var parsedServices = AccountSASServices.parse(accountSASSignatureValues.services).toString();
+    var parsedResourceTypes = AccountSASResourceTypes.parse(accountSASSignatureValues.resourceTypes).toString();
+    var stringToSign = [
+        sharedKeyCredential.accountName,
+        parsedPermissions,
+        parsedServices,
+        parsedResourceTypes,
+        accountSASSignatureValues.startsOn
+            ? truncatedISO8061Date(accountSASSignatureValues.startsOn, false)
+            : "",
+        truncatedISO8061Date(accountSASSignatureValues.expiresOn, false),
+        accountSASSignatureValues.ipRange ? ipRangeToString(accountSASSignatureValues.ipRange) : "",
+        accountSASSignatureValues.protocol ? accountSASSignatureValues.protocol : "",
+        version,
+        "" // Account SAS requires an additional newline character
+    ].join("\n");
+    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
+    return new SASQueryParameters(version, signature, parsedPermissions.toString(), parsedServices, parsedResourceTypes, accountSASSignatureValues.protocol, accountSASSignatureValues.startsOn, accountSASSignatureValues.expiresOn, accountSASSignatureValues.ipRange);
+}
 
 /**
  * A BlobServiceClient represents a Client to the Azure Storage Blob service allowing you
@@ -48808,7 +50755,7 @@ var BlobServiceClient = /** @class */ (function (_super) {
     BlobServiceClient.prototype.findBlobsByTagsSegment = function (tagFilterSqlExpression, marker, options) {
         if (options === void 0) { options = {}; }
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var _a, span, spanOptions, e_9;
+            var _a, span, spanOptions, response, wrappedResponse, e_9;
             return tslib.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -48823,7 +50770,17 @@ var BlobServiceClient = /** @class */ (function (_super) {
                                 maxPageSize: options.maxPageSize,
                                 spanOptions: spanOptions
                             })];
-                    case 2: return [2 /*return*/, _b.sent()];
+                    case 2:
+                        response = _b.sent();
+                        wrappedResponse = tslib.__assign(tslib.__assign({}, response), { _response: response._response, blobs: response.blobs.map(function (blob) {
+                                var _a;
+                                var tagValue = "";
+                                if (((_a = blob.tags) === null || _a === void 0 ? void 0 : _a.blobTagSet.length) === 1) {
+                                    tagValue = blob.tags.blobTagSet[0].value;
+                                }
+                                return tslib.__assign(tslib.__assign({}, blob), { tags: toTags(blob.tags), tagValue: tagValue });
+                            }) });
+                        return [2 /*return*/, wrappedResponse];
                     case 3:
                         e_9 = _b.sent();
                         span.setStatus({
@@ -49331,1470 +51288,39 @@ var BlobServiceClient = /** @class */ (function (_super) {
     BlobServiceClient.prototype.getBlobBatchClient = function () {
         return new BlobBatchClient(this.url, this.pipeline);
     };
+    /**
+     * Only available for BlobServiceClient constructed with a shared key credential.
+     *
+     * Generates a Blob account Shared Access Signature (SAS) URI based on the client properties
+     * and parameters passed in. The SAS is signed by the shared key credential of the client.
+     *
+     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/create-account-sas
+     *
+     * @param {Date} expiresOn Optional. The time at which the shared access signature becomes invalid. Default to an hour later if not provided.
+     * @param {AccountSASPermissions} [permissions=AccountSASPermissions.parse("r")] Specifies the list of permissions to be associated with the SAS.
+     * @param {string} [resourceTypes="sco"] Specifies the resource types associated with the shared access signature.
+     * @param {ServiceGenerateAccountSasUrlOptions} [options={}] Optional parameters.
+     * @returns {string} An account SAS URI consisting of the URI to the resource represented by this client, followed by the generated SAS token.
+     * @memberof BlobServiceClient
+     */
+    BlobServiceClient.prototype.generateAccountSasUrl = function (expiresOn, permissions, resourceTypes, options) {
+        if (permissions === void 0) { permissions = AccountSASPermissions.parse("r"); }
+        if (resourceTypes === void 0) { resourceTypes = "sco"; }
+        if (options === void 0) { options = {}; }
+        if (!(this.credential instanceof StorageSharedKeyCredential)) {
+            throw RangeError("Can only generate the account SAS when the client is initialized with a shared key credential");
+        }
+        if (expiresOn === undefined) {
+            var now = new Date();
+            expiresOn = new Date(now.getTime() + 3600 * 1000);
+        }
+        var sas = generateAccountSASQueryParameters(tslib.__assign({ permissions: permissions,
+            expiresOn: expiresOn,
+            resourceTypes: resourceTypes, services: AccountSASServices.parse("b").toString() }, options), this.credential).toString();
+        return appendToURLQuery(this.url, sas);
+    };
     return BlobServiceClient;
 }(StorageClient));
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * This is a helper class to construct a string representing the permissions granted by an AccountSAS. Setting a value
- * to true means that any SAS which uses these permissions will grant permissions for that operation. Once all the
- * values are set, this should be serialized with toString and set as the permissions field on an
- * {@link AccountSASSignatureValues} object. It is possible to construct the permissions string without this class, but
- * the order of the permissions is particular and this class guarantees correctness.
- *
- * @export
- * @class AccountSASPermissions
- */
-var AccountSASPermissions = /** @class */ (function () {
-    function AccountSASPermissions() {
-        /**
-         * Permission to read resources and list queues and tables granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.read = false;
-        /**
-         * Permission to write resources granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.write = false;
-        /**
-         * Permission to create blobs and files granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.delete = false;
-        /**
-         * Permission to delete versions granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.deleteVersion = false;
-        /**
-         * Permission to list blob containers, blobs, shares, directories, and files granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.list = false;
-        /**
-         * Permission to add messages, table entities, and append to blobs granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.add = false;
-        /**
-         * Permission to create blobs and files granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.create = false;
-        /**
-         * Permissions to update messages and table entities granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.update = false;
-        /**
-         * Permission to get and delete messages granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.process = false;
-        /**
-         * Specfies Tag access granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.tag = false;
-        /**
-         * Permission to filter blobs.
-         *
-         * @type {boolean}
-         * @memberof AccountSASPermissions
-         */
-        this.filter = false;
-    }
-    /**
-     * Parse initializes the AccountSASPermissions fields from a string.
-     *
-     * @static
-     * @param {string} permissions
-     * @returns {AccountSASPermissions}
-     * @memberof AccountSASPermissions
-     */
-    AccountSASPermissions.parse = function (permissions) {
-        var accountSASPermissions = new AccountSASPermissions();
-        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
-            var c = permissions_1[_i];
-            switch (c) {
-                case "r":
-                    accountSASPermissions.read = true;
-                    break;
-                case "w":
-                    accountSASPermissions.write = true;
-                    break;
-                case "d":
-                    accountSASPermissions.delete = true;
-                    break;
-                case "x":
-                    accountSASPermissions.deleteVersion = true;
-                    break;
-                case "l":
-                    accountSASPermissions.list = true;
-                    break;
-                case "a":
-                    accountSASPermissions.add = true;
-                    break;
-                case "c":
-                    accountSASPermissions.create = true;
-                    break;
-                case "u":
-                    accountSASPermissions.update = true;
-                    break;
-                case "p":
-                    accountSASPermissions.process = true;
-                    break;
-                case "t":
-                    accountSASPermissions.tag = true;
-                    break;
-                case "f":
-                    accountSASPermissions.filter = true;
-                    break;
-                default:
-                    throw new RangeError("Invalid permission character: " + c);
-            }
-        }
-        return accountSASPermissions;
-    };
-    /**
-     * Produces the SAS permissions string for an Azure Storage account.
-     * Call this method to set AccountSASSignatureValues Permissions field.
-     *
-     * Using this method will guarantee the resource types are in
-     * an order accepted by the service.
-     *
-     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
-     *
-     * @returns {string}
-     * @memberof AccountSASPermissions
-     */
-    AccountSASPermissions.prototype.toString = function () {
-        // The order of the characters should be as specified here to ensure correctness:
-        // https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
-        // Use a string array instead of string concatenating += operator for performance
-        var permissions = [];
-        if (this.read) {
-            permissions.push("r");
-        }
-        if (this.write) {
-            permissions.push("w");
-        }
-        if (this.delete) {
-            permissions.push("d");
-        }
-        if (this.deleteVersion) {
-            permissions.push("x");
-        }
-        if (this.filter) {
-            permissions.push("f");
-        }
-        if (this.tag) {
-            permissions.push("t");
-        }
-        if (this.list) {
-            permissions.push("l");
-        }
-        if (this.add) {
-            permissions.push("a");
-        }
-        if (this.create) {
-            permissions.push("c");
-        }
-        if (this.update) {
-            permissions.push("u");
-        }
-        if (this.process) {
-            permissions.push("p");
-        }
-        return permissions.join("");
-    };
-    return AccountSASPermissions;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * This is a helper class to construct a string representing the resources accessible by an AccountSAS. Setting a value
- * to true means that any SAS which uses these permissions will grant access to that resource type. Once all the
- * values are set, this should be serialized with toString and set as the resources field on an
- * {@link AccountSASSignatureValues} object. It is possible to construct the resources string without this class, but
- * the order of the resources is particular and this class guarantees correctness.
- *
- * @export
- * @class AccountSASResourceTypes
- */
-var AccountSASResourceTypes = /** @class */ (function () {
-    function AccountSASResourceTypes() {
-        /**
-         * Permission to access service level APIs granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASResourceTypes
-         */
-        this.service = false;
-        /**
-         * Permission to access container level APIs (Blob Containers, Tables, Queues, File Shares) granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASResourceTypes
-         */
-        this.container = false;
-        /**
-         * Permission to access object level APIs (Blobs, Table Entities, Queue Messages, Files) granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASResourceTypes
-         */
-        this.object = false;
-    }
-    /**
-     * Creates an {@link AccountSASResourceTypes} from the specified resource types string. This method will throw an
-     * Error if it encounters a character that does not correspond to a valid resource type.
-     *
-     * @static
-     * @param {string} resourceTypes
-     * @returns {AccountSASResourceTypes}
-     * @memberof AccountSASResourceTypes
-     */
-    AccountSASResourceTypes.parse = function (resourceTypes) {
-        var accountSASResourceTypes = new AccountSASResourceTypes();
-        for (var _i = 0, resourceTypes_1 = resourceTypes; _i < resourceTypes_1.length; _i++) {
-            var c = resourceTypes_1[_i];
-            switch (c) {
-                case "s":
-                    accountSASResourceTypes.service = true;
-                    break;
-                case "c":
-                    accountSASResourceTypes.container = true;
-                    break;
-                case "o":
-                    accountSASResourceTypes.object = true;
-                    break;
-                default:
-                    throw new RangeError("Invalid resource type: " + c);
-            }
-        }
-        return accountSASResourceTypes;
-    };
-    /**
-     * Converts the given resource types to a string.
-     *
-     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
-     *
-     * @returns {string}
-     * @memberof AccountSASResourceTypes
-     */
-    AccountSASResourceTypes.prototype.toString = function () {
-        var resourceTypes = [];
-        if (this.service) {
-            resourceTypes.push("s");
-        }
-        if (this.container) {
-            resourceTypes.push("c");
-        }
-        if (this.object) {
-            resourceTypes.push("o");
-        }
-        return resourceTypes.join("");
-    };
-    return AccountSASResourceTypes;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * This is a helper class to construct a string representing the services accessible by an AccountSAS. Setting a value
- * to true means that any SAS which uses these permissions will grant access to that service. Once all the
- * values are set, this should be serialized with toString and set as the services field on an
- * {@link AccountSASSignatureValues} object. It is possible to construct the services string without this class, but
- * the order of the services is particular and this class guarantees correctness.
- *
- * @export
- * @class AccountSASServices
- */
-var AccountSASServices = /** @class */ (function () {
-    function AccountSASServices() {
-        /**
-         * Permission to access blob resources granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASServices
-         */
-        this.blob = false;
-        /**
-         * Permission to access file resources granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASServices
-         */
-        this.file = false;
-        /**
-         * Permission to access queue resources granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASServices
-         */
-        this.queue = false;
-        /**
-         * Permission to access table resources granted.
-         *
-         * @type {boolean}
-         * @memberof AccountSASServices
-         */
-        this.table = false;
-    }
-    /**
-     * Creates an {@link AccountSASServices} from the specified services string. This method will throw an
-     * Error if it encounters a character that does not correspond to a valid service.
-     *
-     * @static
-     * @param {string} services
-     * @returns {AccountSASServices}
-     * @memberof AccountSASServices
-     */
-    AccountSASServices.parse = function (services) {
-        var accountSASServices = new AccountSASServices();
-        for (var _i = 0, services_1 = services; _i < services_1.length; _i++) {
-            var c = services_1[_i];
-            switch (c) {
-                case "b":
-                    accountSASServices.blob = true;
-                    break;
-                case "f":
-                    accountSASServices.file = true;
-                    break;
-                case "q":
-                    accountSASServices.queue = true;
-                    break;
-                case "t":
-                    accountSASServices.table = true;
-                    break;
-                default:
-                    throw new RangeError("Invalid service character: " + c);
-            }
-        }
-        return accountSASServices;
-    };
-    /**
-     * Converts the given services to a string.
-     *
-     * @returns {string}
-     * @memberof AccountSASServices
-     */
-    AccountSASServices.prototype.toString = function () {
-        var services = [];
-        if (this.blob) {
-            services.push("b");
-        }
-        if (this.table) {
-            services.push("t");
-        }
-        if (this.queue) {
-            services.push("q");
-        }
-        if (this.file) {
-            services.push("f");
-        }
-        return services.join("");
-    };
-    return AccountSASServices;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * Generate SasIPRange format string. For example:
- *
- * "8.8.8.8" or "1.1.1.1-255.255.255.255"
- *
- * @export
- * @param {SasIPRange} ipRange
- * @returns {string}
- */
-function ipRangeToString(ipRange) {
-    return ipRange.end ? ipRange.start + "-" + ipRange.end : ipRange.start;
-}
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-(function (SASProtocol) {
-    /**
-     * Protocol that allows HTTPS only
-     */
-    SASProtocol["Https"] = "https";
-    /**
-     * Protocol that allows both HTTPS and HTTP
-     */
-    SASProtocol["HttpsAndHttp"] = "https,http";
-})(exports.SASProtocol || (exports.SASProtocol = {}));
-/**
- * Represents the components that make up an Azure Storage SAS' query parameters. This type is not constructed directly
- * by the user; it is only generated by the {@link AccountSASSignatureValues} and {@link BlobSASSignatureValues}
- * types. Once generated, it can be encoded into a {@code String} and appended to a URL directly (though caution should
- * be taken here in case there are existing query parameters, which might affect the appropriate means of appending
- * these query parameters).
- *
- * NOTE: Instances of this class are immutable.
- *
- * @export
- * @class SASQueryParameters
- */
-var SASQueryParameters = /** @class */ (function () {
-    function SASQueryParameters(version, signature, permissionsOrOptions, services, resourceTypes, protocol, startsOn, expiresOn, ipRange, identifier, resource, cacheControl, contentDisposition, contentEncoding, contentLanguage, contentType, userDelegationKey, preauthorizedAgentObjectId, correlationId) {
-        this.version = version;
-        this.signature = signature;
-        if (permissionsOrOptions !== undefined && typeof permissionsOrOptions !== "string") {
-            // SASQueryParametersOptions
-            this.permissions = permissionsOrOptions.permissions;
-            this.services = permissionsOrOptions.services;
-            this.resourceTypes = permissionsOrOptions.resourceTypes;
-            this.protocol = permissionsOrOptions.protocol;
-            this.startsOn = permissionsOrOptions.startsOn;
-            this.expiresOn = permissionsOrOptions.expiresOn;
-            this.ipRangeInner = permissionsOrOptions.ipRange;
-            this.identifier = permissionsOrOptions.identifier;
-            this.resource = permissionsOrOptions.resource;
-            this.cacheControl = permissionsOrOptions.cacheControl;
-            this.contentDisposition = permissionsOrOptions.contentDisposition;
-            this.contentEncoding = permissionsOrOptions.contentEncoding;
-            this.contentLanguage = permissionsOrOptions.contentLanguage;
-            this.contentType = permissionsOrOptions.contentType;
-            if (permissionsOrOptions.userDelegationKey) {
-                this.signedOid = permissionsOrOptions.userDelegationKey.signedObjectId;
-                this.signedTenantId = permissionsOrOptions.userDelegationKey.signedTenantId;
-                this.signedStartsOn = permissionsOrOptions.userDelegationKey.signedStartsOn;
-                this.signedExpiresOn = permissionsOrOptions.userDelegationKey.signedExpiresOn;
-                this.signedService = permissionsOrOptions.userDelegationKey.signedService;
-                this.signedVersion = permissionsOrOptions.userDelegationKey.signedVersion;
-                this.preauthorizedAgentObjectId = permissionsOrOptions.preauthorizedAgentObjectId;
-                this.correlationId = permissionsOrOptions.correlationId;
-            }
-        }
-        else {
-            this.services = services;
-            this.resourceTypes = resourceTypes;
-            this.expiresOn = expiresOn;
-            this.permissions = permissionsOrOptions;
-            this.protocol = protocol;
-            this.startsOn = startsOn;
-            this.ipRangeInner = ipRange;
-            this.identifier = identifier;
-            this.resource = resource;
-            this.cacheControl = cacheControl;
-            this.contentDisposition = contentDisposition;
-            this.contentEncoding = contentEncoding;
-            this.contentLanguage = contentLanguage;
-            this.contentType = contentType;
-            if (userDelegationKey) {
-                this.signedOid = userDelegationKey.signedObjectId;
-                this.signedTenantId = userDelegationKey.signedTenantId;
-                this.signedStartsOn = userDelegationKey.signedStartsOn;
-                this.signedExpiresOn = userDelegationKey.signedExpiresOn;
-                this.signedService = userDelegationKey.signedService;
-                this.signedVersion = userDelegationKey.signedVersion;
-                this.preauthorizedAgentObjectId = preauthorizedAgentObjectId;
-                this.correlationId = correlationId;
-            }
-        }
-    }
-    Object.defineProperty(SASQueryParameters.prototype, "ipRange", {
-        /**
-         * Optional. IP range allowed for this SAS.
-         *
-         * @readonly
-         * @type {(SasIPRange | undefined)}
-         * @memberof SASQueryParameters
-         */
-        get: function () {
-            if (this.ipRangeInner) {
-                return {
-                    end: this.ipRangeInner.end,
-                    start: this.ipRangeInner.start
-                };
-            }
-            return undefined;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Encodes all SAS query parameters into a string that can be appended to a URL.
-     *
-     * @returns {string}
-     * @memberof SASQueryParameters
-     */
-    SASQueryParameters.prototype.toString = function () {
-        var params = [
-            "sv",
-            "ss",
-            "srt",
-            "spr",
-            "st",
-            "se",
-            "sip",
-            "si",
-            "skoid",
-            "sktid",
-            "skt",
-            "ske",
-            "sks",
-            "skv",
-            "sr",
-            "sp",
-            "sig",
-            "rscc",
-            "rscd",
-            "rsce",
-            "rscl",
-            "rsct",
-            "saoid",
-            "scid"
-        ];
-        var queries = [];
-        for (var _i = 0, params_1 = params; _i < params_1.length; _i++) {
-            var param = params_1[_i];
-            switch (param) {
-                case "sv":
-                    this.tryAppendQueryParameter(queries, param, this.version);
-                    break;
-                case "ss":
-                    this.tryAppendQueryParameter(queries, param, this.services);
-                    break;
-                case "srt":
-                    this.tryAppendQueryParameter(queries, param, this.resourceTypes);
-                    break;
-                case "spr":
-                    this.tryAppendQueryParameter(queries, param, this.protocol);
-                    break;
-                case "st":
-                    this.tryAppendQueryParameter(queries, param, this.startsOn ? truncatedISO8061Date(this.startsOn, false) : undefined);
-                    break;
-                case "se":
-                    this.tryAppendQueryParameter(queries, param, this.expiresOn ? truncatedISO8061Date(this.expiresOn, false) : undefined);
-                    break;
-                case "sip":
-                    this.tryAppendQueryParameter(queries, param, this.ipRange ? ipRangeToString(this.ipRange) : undefined);
-                    break;
-                case "si":
-                    this.tryAppendQueryParameter(queries, param, this.identifier);
-                    break;
-                case "skoid": // Signed object ID
-                    this.tryAppendQueryParameter(queries, param, this.signedOid);
-                    break;
-                case "sktid": // Signed tenant ID
-                    this.tryAppendQueryParameter(queries, param, this.signedTenantId);
-                    break;
-                case "skt": // Signed key start time
-                    this.tryAppendQueryParameter(queries, param, this.signedStartsOn ? truncatedISO8061Date(this.signedStartsOn, false) : undefined);
-                    break;
-                case "ske": // Signed key expiry time
-                    this.tryAppendQueryParameter(queries, param, this.signedExpiresOn ? truncatedISO8061Date(this.signedExpiresOn, false) : undefined);
-                    break;
-                case "sks": // Signed key service
-                    this.tryAppendQueryParameter(queries, param, this.signedService);
-                    break;
-                case "skv": // Signed key version
-                    this.tryAppendQueryParameter(queries, param, this.signedVersion);
-                    break;
-                case "sr":
-                    this.tryAppendQueryParameter(queries, param, this.resource);
-                    break;
-                case "sp":
-                    this.tryAppendQueryParameter(queries, param, this.permissions);
-                    break;
-                case "sig":
-                    this.tryAppendQueryParameter(queries, param, this.signature);
-                    break;
-                case "rscc":
-                    this.tryAppendQueryParameter(queries, param, this.cacheControl);
-                    break;
-                case "rscd":
-                    this.tryAppendQueryParameter(queries, param, this.contentDisposition);
-                    break;
-                case "rsce":
-                    this.tryAppendQueryParameter(queries, param, this.contentEncoding);
-                    break;
-                case "rscl":
-                    this.tryAppendQueryParameter(queries, param, this.contentLanguage);
-                    break;
-                case "rsct":
-                    this.tryAppendQueryParameter(queries, param, this.contentType);
-                    break;
-                case "saoid":
-                    this.tryAppendQueryParameter(queries, param, this.preauthorizedAgentObjectId);
-                    break;
-                case "scid":
-                    this.tryAppendQueryParameter(queries, param, this.correlationId);
-                    break;
-            }
-        }
-        return queries.join("&");
-    };
-    /**
-     * A private helper method used to filter and append query key/value pairs into an array.
-     *
-     * @private
-     * @param {string[]} queries
-     * @param {string} key
-     * @param {string} [value]
-     * @returns {void}
-     * @memberof SASQueryParameters
-     */
-    SASQueryParameters.prototype.tryAppendQueryParameter = function (queries, key, value) {
-        if (!value) {
-            return;
-        }
-        key = encodeURIComponent(key);
-        value = encodeURIComponent(value);
-        if (key.length > 0 && value.length > 0) {
-            queries.push(key + "=" + value);
-        }
-    };
-    return SASQueryParameters;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * Generates a {@link SASQueryParameters} object which contains all SAS query parameters needed to make an actual
- * REST request.
- *
- * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-an-account-sas
- *
- * @param {AccountSASSignatureValues} accountSASSignatureValues
- * @param {StorageSharedKeyCredential} sharedKeyCredential
- * @returns {SASQueryParameters}
- * @memberof AccountSASSignatureValues
- */
-function generateAccountSASQueryParameters(accountSASSignatureValues, sharedKeyCredential) {
-    var version = accountSASSignatureValues.version
-        ? accountSASSignatureValues.version
-        : SERVICE_VERSION;
-    if (accountSASSignatureValues.permissions &&
-        accountSASSignatureValues.permissions.deleteVersion &&
-        version < "2019-10-10") {
-        throw RangeError("'version' must be >= '2019-10-10' when provided 'x' permission.");
-    }
-    if (accountSASSignatureValues.permissions &&
-        accountSASSignatureValues.permissions.tag &&
-        version < "2019-12-12") {
-        throw RangeError("'version' must be >= '2019-12-12' when provided 't' permission.");
-    }
-    if (accountSASSignatureValues.permissions &&
-        accountSASSignatureValues.permissions.filter &&
-        version < "2019-12-12") {
-        throw RangeError("'version' must be >= '2019-12-12' when provided 'f' permission.");
-    }
-    var parsedPermissions = AccountSASPermissions.parse(accountSASSignatureValues.permissions.toString());
-    var parsedServices = AccountSASServices.parse(accountSASSignatureValues.services).toString();
-    var parsedResourceTypes = AccountSASResourceTypes.parse(accountSASSignatureValues.resourceTypes).toString();
-    var stringToSign = [
-        sharedKeyCredential.accountName,
-        parsedPermissions,
-        parsedServices,
-        parsedResourceTypes,
-        accountSASSignatureValues.startsOn
-            ? truncatedISO8061Date(accountSASSignatureValues.startsOn, false)
-            : "",
-        truncatedISO8061Date(accountSASSignatureValues.expiresOn, false),
-        accountSASSignatureValues.ipRange ? ipRangeToString(accountSASSignatureValues.ipRange) : "",
-        accountSASSignatureValues.protocol ? accountSASSignatureValues.protocol : "",
-        version,
-        "" // Account SAS requires an additional newline character
-    ].join("\n");
-    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
-    return new SASQueryParameters(version, signature, parsedPermissions.toString(), parsedServices, parsedResourceTypes, accountSASSignatureValues.protocol, accountSASSignatureValues.startsOn, accountSASSignatureValues.expiresOn, accountSASSignatureValues.ipRange);
-}
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * This is a helper class to construct a string representing the permissions granted by a ServiceSAS to a blob. Setting
- * a value to true means that any SAS which uses these permissions will grant permissions for that operation. Once all
- * the values are set, this should be serialized with toString and set as the permissions field on a
- * {@link BlobSASSignatureValues} object. It is possible to construct the permissions string without this class, but
- * the order of the permissions is particular and this class guarantees correctness.
- *
- * @export
- * @class BlobSASPermissions
- */
-var BlobSASPermissions = /** @class */ (function () {
-    function BlobSASPermissions() {
-        /**
-         * Specifies Read access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.read = false;
-        /**
-         * Specifies Add access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.add = false;
-        /**
-         * Specifies Create access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.create = false;
-        /**
-         * Specifies Write access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.write = false;
-        /**
-         * Specifies Delete access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.delete = false;
-        /**
-         * Specifies Delete version access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.deleteVersion = false;
-        /**
-         * Specfies Tag access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.tag = false;
-        /**
-         * Specifies Move access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.move = false;
-        /**
-         * Specifies Execute access granted.
-         *
-         * @type {boolean}
-         * @memberof BlobSASPermissions
-         */
-        this.execute = false;
-    }
-    /**
-     * Creates a {@link BlobSASPermissions} from the specified permissions string. This method will throw an
-     * Error if it encounters a character that does not correspond to a valid permission.
-     *
-     * @static
-     * @param {string} permissions
-     * @returns {BlobSASPermissions}
-     * @memberof BlobSASPermissions
-     */
-    BlobSASPermissions.parse = function (permissions) {
-        var blobSASPermissions = new BlobSASPermissions();
-        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
-            var char = permissions_1[_i];
-            switch (char) {
-                case "r":
-                    blobSASPermissions.read = true;
-                    break;
-                case "a":
-                    blobSASPermissions.add = true;
-                    break;
-                case "c":
-                    blobSASPermissions.create = true;
-                    break;
-                case "w":
-                    blobSASPermissions.write = true;
-                    break;
-                case "d":
-                    blobSASPermissions.delete = true;
-                    break;
-                case "x":
-                    blobSASPermissions.deleteVersion = true;
-                    break;
-                case "t":
-                    blobSASPermissions.tag = true;
-                    break;
-                case "m":
-                    blobSASPermissions.move = true;
-                    break;
-                case "e":
-                    blobSASPermissions.execute = true;
-                    break;
-                default:
-                    throw new RangeError("Invalid permission: " + char);
-            }
-        }
-        return blobSASPermissions;
-    };
-    /**
-     * Converts the given permissions to a string. Using this method will guarantee the permissions are in an
-     * order accepted by the service.
-     *
-     * @returns {string} A string which represents the BlobSASPermissions
-     * @memberof BlobSASPermissions
-     */
-    BlobSASPermissions.prototype.toString = function () {
-        var permissions = [];
-        if (this.read) {
-            permissions.push("r");
-        }
-        if (this.add) {
-            permissions.push("a");
-        }
-        if (this.create) {
-            permissions.push("c");
-        }
-        if (this.write) {
-            permissions.push("w");
-        }
-        if (this.delete) {
-            permissions.push("d");
-        }
-        if (this.deleteVersion) {
-            permissions.push("x");
-        }
-        if (this.tag) {
-            permissions.push("t");
-        }
-        if (this.move) {
-            permissions.push("m");
-        }
-        if (this.execute) {
-            permissions.push("e");
-        }
-        return permissions.join("");
-    };
-    return BlobSASPermissions;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-/**
- * This is a helper class to construct a string representing the permissions granted by a ServiceSAS to a container.
- * Setting a value to true means that any SAS which uses these permissions will grant permissions for that operation.
- * Once all the values are set, this should be serialized with toString and set as the permissions field on a
- * {@link BlobSASSignatureValues} object. It is possible to construct the permissions string without this class, but
- * the order of the permissions is particular and this class guarantees correctness.
- *
- * @export
- * @class ContainerSASPermissions
- */
-var ContainerSASPermissions = /** @class */ (function () {
-    function ContainerSASPermissions() {
-        /**
-         * Specifies Read access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.read = false;
-        /**
-         * Specifies Add access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.add = false;
-        /**
-         * Specifies Create access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.create = false;
-        /**
-         * Specifies Write access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.write = false;
-        /**
-         * Specifies Delete access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.delete = false;
-        /**
-         * Specifies Delete version access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.deleteVersion = false;
-        /**
-         * Specifies List access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.list = false;
-        /**
-         * Specfies Tag access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.tag = false;
-        /**
-         * Specifies Move access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.move = false;
-        /**
-         * Specifies Execute access granted.
-         *
-         * @type {boolean}
-         * @memberof ContainerSASPermissions
-         */
-        this.execute = false;
-    }
-    /**
-     * Creates an {@link ContainerSASPermissions} from the specified permissions string. This method will throw an
-     * Error if it encounters a character that does not correspond to a valid permission.
-     *
-     * @static
-     * @param {string} permissions
-     * @returns {ContainerSASPermissions}
-     * @memberof ContainerSASPermissions
-     */
-    ContainerSASPermissions.parse = function (permissions) {
-        var containerSASPermissions = new ContainerSASPermissions();
-        for (var _i = 0, permissions_1 = permissions; _i < permissions_1.length; _i++) {
-            var char = permissions_1[_i];
-            switch (char) {
-                case "r":
-                    containerSASPermissions.read = true;
-                    break;
-                case "a":
-                    containerSASPermissions.add = true;
-                    break;
-                case "c":
-                    containerSASPermissions.create = true;
-                    break;
-                case "w":
-                    containerSASPermissions.write = true;
-                    break;
-                case "d":
-                    containerSASPermissions.delete = true;
-                    break;
-                case "l":
-                    containerSASPermissions.list = true;
-                    break;
-                case "t":
-                    containerSASPermissions.tag = true;
-                    break;
-                case "x":
-                    containerSASPermissions.deleteVersion = true;
-                    break;
-                case "m":
-                    containerSASPermissions.move = true;
-                    break;
-                case "e":
-                    containerSASPermissions.execute = true;
-                    break;
-                default:
-                    throw new RangeError("Invalid permission " + char);
-            }
-        }
-        return containerSASPermissions;
-    };
-    /**
-     * Converts the given permissions to a string. Using this method will guarantee the permissions are in an
-     * order accepted by the service.
-     *
-     * The order of the characters should be as specified here to ensure correctness.
-     * @see https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas
-     *
-     * @returns {string}
-     * @memberof ContainerSASPermissions
-     */
-    ContainerSASPermissions.prototype.toString = function () {
-        var permissions = [];
-        if (this.read) {
-            permissions.push("r");
-        }
-        if (this.add) {
-            permissions.push("a");
-        }
-        if (this.create) {
-            permissions.push("c");
-        }
-        if (this.write) {
-            permissions.push("w");
-        }
-        if (this.delete) {
-            permissions.push("d");
-        }
-        if (this.deleteVersion) {
-            permissions.push("x");
-        }
-        if (this.list) {
-            permissions.push("l");
-        }
-        if (this.tag) {
-            permissions.push("t");
-        }
-        if (this.move) {
-            permissions.push("m");
-        }
-        if (this.execute) {
-            permissions.push("e");
-        }
-        return permissions.join("");
-    };
-    return ContainerSASPermissions;
-}());
-
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- *
- * UserDelegationKeyCredential is only used for generation of user delegation SAS.
- * @see https://docs.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas
- *
- * @export
- * @class UserDelegationKeyCredential
- */
-var UserDelegationKeyCredential = /** @class */ (function () {
-    /**
-     * Creates an instance of UserDelegationKeyCredential.
-     * @param {string} accountName
-     * @param {UserDelegationKey} userDelegationKey
-     * @memberof UserDelegationKeyCredential
-     */
-    function UserDelegationKeyCredential(accountName, userDelegationKey) {
-        this.accountName = accountName;
-        this.userDelegationKey = userDelegationKey;
-        this.key = Buffer.from(userDelegationKey.value, "base64");
-    }
-    /**
-     * Generates a hash signature for an HTTP request or for a SAS.
-     *
-     * @param {string} stringToSign
-     * @returns {string}
-     * @memberof UserDelegationKeyCredential
-     */
-    UserDelegationKeyCredential.prototype.computeHMACSHA256 = function (stringToSign) {
-        // console.log(`stringToSign: ${JSON.stringify(stringToSign)}`);
-        return crypto.createHmac("sha256", this.key)
-            .update(stringToSign, "utf8")
-            .digest("base64");
-    };
-    return UserDelegationKeyCredential;
-}());
-
-// Copyright (c) Microsoft Corporation. All rights reserved.
-function generateBlobSASQueryParameters(blobSASSignatureValues, sharedKeyCredentialOrUserDelegationKey, accountName) {
-    var version = blobSASSignatureValues.version ? blobSASSignatureValues.version : SERVICE_VERSION;
-    var sharedKeyCredential = sharedKeyCredentialOrUserDelegationKey instanceof StorageSharedKeyCredential
-        ? sharedKeyCredentialOrUserDelegationKey
-        : undefined;
-    var userDelegationKeyCredential;
-    if (sharedKeyCredential === undefined && accountName !== undefined) {
-        userDelegationKeyCredential = new UserDelegationKeyCredential(accountName, sharedKeyCredentialOrUserDelegationKey);
-    }
-    if (sharedKeyCredential === undefined && userDelegationKeyCredential === undefined) {
-        throw TypeError("Invalid sharedKeyCredential, userDelegationKey or accountName.");
-    }
-    // Version 2019-12-12 adds support for the blob tags permission.
-    // Version 2018-11-09 adds support for the signed resource and signed blob snapshot time fields.
-    // https://docs.microsoft.com/en-us/rest/api/storageservices/constructing-a-service-sas#constructing-the-signature-string
-    if (version >= "2018-11-09") {
-        if (sharedKeyCredential !== undefined) {
-            return generateBlobSASQueryParameters20181109(blobSASSignatureValues, sharedKeyCredential);
-        }
-        else {
-            // Version 2020-02-10 delegation SAS signature construction includes preauthorizedAgentObjectId, agentObjectId, correlationId.
-            if (version >= "2020-02-10") {
-                return generateBlobSASQueryParametersUDK20200210(blobSASSignatureValues, userDelegationKeyCredential);
-            }
-            else {
-                return generateBlobSASQueryParametersUDK20181109(blobSASSignatureValues, userDelegationKeyCredential);
-            }
-        }
-    }
-    if (version >= "2015-04-05") {
-        if (sharedKeyCredential !== undefined) {
-            return generateBlobSASQueryParameters20150405(blobSASSignatureValues, sharedKeyCredential);
-        }
-        else {
-            throw new RangeError("'version' must be >= '2018-11-09' when generating user delegation SAS using user delegation key.");
-        }
-    }
-    throw new RangeError("'version' must be >= '2015-04-05'.");
-}
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- * IMPLEMENTATION FOR API VERSION FROM 2015-04-05 AND BEFORE 2018-11-09.
- *
- * Creates an instance of SASQueryParameters.
- *
- * Only accepts required settings needed to create a SAS. For optional settings please
- * set corresponding properties directly, such as permissions, startsOn and identifier.
- *
- * WARNING: When identifier is not provided, permissions and expiresOn are required.
- * You MUST assign value to identifier or expiresOn & permissions manually if you initial with
- * this constructor.
- *
- * @param {BlobSASSignatureValues} blobSASSignatureValues
- * @param {StorageSharedKeyCredential} sharedKeyCredential
- * @returns {SASQueryParameters}
- */
-function generateBlobSASQueryParameters20150405(blobSASSignatureValues, sharedKeyCredential) {
-    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
-    if (!blobSASSignatureValues.identifier &&
-        !blobSASSignatureValues.permissions &&
-        !blobSASSignatureValues.expiresOn) {
-        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when 'identifier' is not provided.");
-    }
-    var resource = "c";
-    if (blobSASSignatureValues.blobName) {
-        resource = "b";
-    }
-    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
-    var verifiedPermissions;
-    if (blobSASSignatureValues.permissions) {
-        if (blobSASSignatureValues.blobName) {
-            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-        else {
-            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-    }
-    // Signature is generated on the un-url-encoded values.
-    var stringToSign = [
-        verifiedPermissions ? verifiedPermissions : "",
-        blobSASSignatureValues.startsOn
-            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
-            : "",
-        blobSASSignatureValues.expiresOn
-            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
-            : "",
-        getCanonicalName(sharedKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
-        blobSASSignatureValues.identifier,
-        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
-        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
-        blobSASSignatureValues.version,
-        blobSASSignatureValues.cacheControl ? blobSASSignatureValues.cacheControl : "",
-        blobSASSignatureValues.contentDisposition ? blobSASSignatureValues.contentDisposition : "",
-        blobSASSignatureValues.contentEncoding ? blobSASSignatureValues.contentEncoding : "",
-        blobSASSignatureValues.contentLanguage ? blobSASSignatureValues.contentLanguage : "",
-        blobSASSignatureValues.contentType ? blobSASSignatureValues.contentType : ""
-    ].join("\n");
-    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
-    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType);
-}
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- * IMPLEMENTATION FOR API VERSION FROM 2018-11-09.
- *
- * Creates an instance of SASQueryParameters.
- *
- * Only accepts required settings needed to create a SAS. For optional settings please
- * set corresponding properties directly, such as permissions, startsOn and identifier.
- *
- * WARNING: When identifier is not provided, permissions and expiresOn are required.
- * You MUST assign value to identifier or expiresOn & permissions manually if you initial with
- * this constructor.
- *
- * @param {BlobSASSignatureValues} blobSASSignatureValues
- * @param {StorageSharedKeyCredential} sharedKeyCredential
- * @returns {SASQueryParameters}
- */
-function generateBlobSASQueryParameters20181109(blobSASSignatureValues, sharedKeyCredential) {
-    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
-    if (!blobSASSignatureValues.identifier &&
-        !blobSASSignatureValues.permissions &&
-        !blobSASSignatureValues.expiresOn) {
-        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when 'identifier' is not provided.");
-    }
-    var resource = "c";
-    var timestamp = blobSASSignatureValues.snapshotTime;
-    if (blobSASSignatureValues.blobName) {
-        resource = "b";
-        if (blobSASSignatureValues.snapshotTime) {
-            resource = "bs";
-        }
-        else if (blobSASSignatureValues.versionId) {
-            resource = "bv";
-            timestamp = blobSASSignatureValues.versionId;
-        }
-    }
-    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
-    var verifiedPermissions;
-    if (blobSASSignatureValues.permissions) {
-        if (blobSASSignatureValues.blobName) {
-            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-        else {
-            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-    }
-    // Signature is generated on the un-url-encoded values.
-    var stringToSign = [
-        verifiedPermissions ? verifiedPermissions : "",
-        blobSASSignatureValues.startsOn
-            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
-            : "",
-        blobSASSignatureValues.expiresOn
-            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
-            : "",
-        getCanonicalName(sharedKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
-        blobSASSignatureValues.identifier,
-        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
-        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
-        blobSASSignatureValues.version,
-        resource,
-        timestamp,
-        blobSASSignatureValues.cacheControl ? blobSASSignatureValues.cacheControl : "",
-        blobSASSignatureValues.contentDisposition ? blobSASSignatureValues.contentDisposition : "",
-        blobSASSignatureValues.contentEncoding ? blobSASSignatureValues.contentEncoding : "",
-        blobSASSignatureValues.contentLanguage ? blobSASSignatureValues.contentLanguage : "",
-        blobSASSignatureValues.contentType ? blobSASSignatureValues.contentType : ""
-    ].join("\n");
-    var signature = sharedKeyCredential.computeHMACSHA256(stringToSign);
-    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType);
-}
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- * IMPLEMENTATION FOR API VERSION FROM 2018-11-09.
- *
- * Creates an instance of SASQueryParameters.
- *
- * Only accepts required settings needed to create a SAS. For optional settings please
- * set corresponding properties directly, such as permissions, startsOn.
- *
- * WARNING: identifier will be ignored, permissions and expiresOn are required.
- *
- * @param {BlobSASSignatureValues} blobSASSignatureValues
- * @param {UserDelegationKeyCredential} userDelegationKeyCredential
- * @returns {SASQueryParameters}
- */
-function generateBlobSASQueryParametersUDK20181109(blobSASSignatureValues, userDelegationKeyCredential) {
-    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
-    // Stored access policies are not supported for a user delegation SAS.
-    if (!blobSASSignatureValues.permissions || !blobSASSignatureValues.expiresOn) {
-        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when generating user delegation SAS.");
-    }
-    var resource = "c";
-    var timestamp = blobSASSignatureValues.snapshotTime;
-    if (blobSASSignatureValues.blobName) {
-        resource = "b";
-        if (blobSASSignatureValues.snapshotTime) {
-            resource = "bs";
-        }
-        else if (blobSASSignatureValues.versionId) {
-            resource = "bv";
-            timestamp = blobSASSignatureValues.versionId;
-        }
-    }
-    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
-    var verifiedPermissions;
-    if (blobSASSignatureValues.permissions) {
-        if (blobSASSignatureValues.blobName) {
-            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-        else {
-            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-    }
-    // Signature is generated on the un-url-encoded values.
-    var stringToSign = [
-        verifiedPermissions ? verifiedPermissions : "",
-        blobSASSignatureValues.startsOn
-            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
-            : "",
-        blobSASSignatureValues.expiresOn
-            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
-            : "",
-        getCanonicalName(userDelegationKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
-        userDelegationKeyCredential.userDelegationKey.signedObjectId,
-        userDelegationKeyCredential.userDelegationKey.signedTenantId,
-        userDelegationKeyCredential.userDelegationKey.signedStartsOn
-            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedStartsOn, false)
-            : "",
-        userDelegationKeyCredential.userDelegationKey.signedExpiresOn
-            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedExpiresOn, false)
-            : "",
-        userDelegationKeyCredential.userDelegationKey.signedService,
-        userDelegationKeyCredential.userDelegationKey.signedVersion,
-        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
-        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
-        blobSASSignatureValues.version,
-        resource,
-        timestamp,
-        blobSASSignatureValues.cacheControl,
-        blobSASSignatureValues.contentDisposition,
-        blobSASSignatureValues.contentEncoding,
-        blobSASSignatureValues.contentLanguage,
-        blobSASSignatureValues.contentType
-    ].join("\n");
-    var signature = userDelegationKeyCredential.computeHMACSHA256(stringToSign);
-    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType, userDelegationKeyCredential.userDelegationKey);
-}
-/**
- * ONLY AVAILABLE IN NODE.JS RUNTIME.
- * IMPLEMENTATION FOR API VERSION FROM 2020-02-10.
- *
- * Creates an instance of SASQueryParameters.
- *
- * Only accepts required settings needed to create a SAS. For optional settings please
- * set corresponding properties directly, such as permissions, startsOn.
- *
- * WARNING: identifier will be ignored, permissions and expiresOn are required.
- *
- * @param {BlobSASSignatureValues} blobSASSignatureValues
- * @param {UserDelegationKeyCredential} userDelegationKeyCredential
- * @returns {SASQueryParameters}
- */
-function generateBlobSASQueryParametersUDK20200210(blobSASSignatureValues, userDelegationKeyCredential) {
-    blobSASSignatureValues = SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues);
-    // Stored access policies are not supported for a user delegation SAS.
-    if (!blobSASSignatureValues.permissions || !blobSASSignatureValues.expiresOn) {
-        throw new RangeError("Must provide 'permissions' and 'expiresOn' for Blob SAS generation when generating user delegation SAS.");
-    }
-    var resource = "c";
-    var timestamp = blobSASSignatureValues.snapshotTime;
-    if (blobSASSignatureValues.blobName) {
-        resource = "b";
-        if (blobSASSignatureValues.snapshotTime) {
-            resource = "bs";
-        }
-        else if (blobSASSignatureValues.versionId) {
-            resource = "bv";
-            timestamp = blobSASSignatureValues.versionId;
-        }
-    }
-    // Calling parse and toString guarantees the proper ordering and throws on invalid characters.
-    var verifiedPermissions;
-    if (blobSASSignatureValues.permissions) {
-        if (blobSASSignatureValues.blobName) {
-            verifiedPermissions = BlobSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-        else {
-            verifiedPermissions = ContainerSASPermissions.parse(blobSASSignatureValues.permissions.toString()).toString();
-        }
-    }
-    // Signature is generated on the un-url-encoded values.
-    var stringToSign = [
-        verifiedPermissions ? verifiedPermissions : "",
-        blobSASSignatureValues.startsOn
-            ? truncatedISO8061Date(blobSASSignatureValues.startsOn, false)
-            : "",
-        blobSASSignatureValues.expiresOn
-            ? truncatedISO8061Date(blobSASSignatureValues.expiresOn, false)
-            : "",
-        getCanonicalName(userDelegationKeyCredential.accountName, blobSASSignatureValues.containerName, blobSASSignatureValues.blobName),
-        userDelegationKeyCredential.userDelegationKey.signedObjectId,
-        userDelegationKeyCredential.userDelegationKey.signedTenantId,
-        userDelegationKeyCredential.userDelegationKey.signedStartsOn
-            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedStartsOn, false)
-            : "",
-        userDelegationKeyCredential.userDelegationKey.signedExpiresOn
-            ? truncatedISO8061Date(userDelegationKeyCredential.userDelegationKey.signedExpiresOn, false)
-            : "",
-        userDelegationKeyCredential.userDelegationKey.signedService,
-        userDelegationKeyCredential.userDelegationKey.signedVersion,
-        blobSASSignatureValues.preauthorizedAgentObjectId,
-        undefined,
-        blobSASSignatureValues.correlationId,
-        blobSASSignatureValues.ipRange ? ipRangeToString(blobSASSignatureValues.ipRange) : "",
-        blobSASSignatureValues.protocol ? blobSASSignatureValues.protocol : "",
-        blobSASSignatureValues.version,
-        resource,
-        timestamp,
-        blobSASSignatureValues.cacheControl,
-        blobSASSignatureValues.contentDisposition,
-        blobSASSignatureValues.contentEncoding,
-        blobSASSignatureValues.contentLanguage,
-        blobSASSignatureValues.contentType
-    ].join("\n");
-    var signature = userDelegationKeyCredential.computeHMACSHA256(stringToSign);
-    return new SASQueryParameters(blobSASSignatureValues.version, signature, verifiedPermissions, undefined, undefined, blobSASSignatureValues.protocol, blobSASSignatureValues.startsOn, blobSASSignatureValues.expiresOn, blobSASSignatureValues.ipRange, blobSASSignatureValues.identifier, resource, blobSASSignatureValues.cacheControl, blobSASSignatureValues.contentDisposition, blobSASSignatureValues.contentEncoding, blobSASSignatureValues.contentLanguage, blobSASSignatureValues.contentType, userDelegationKeyCredential.userDelegationKey, blobSASSignatureValues.preauthorizedAgentObjectId, blobSASSignatureValues.correlationId);
-}
-function getCanonicalName(accountName, containerName, blobName) {
-    // Container: "/blob/account/containerName"
-    // Blob:      "/blob/account/containerName/blobName"
-    var elements = ["/blob/" + accountName + "/" + containerName];
-    if (blobName) {
-        elements.push("/" + blobName);
-    }
-    return elements.join("");
-}
-function SASSignatureValuesSanityCheckAndAutofill(blobSASSignatureValues) {
-    var version = blobSASSignatureValues.version ? blobSASSignatureValues.version : SERVICE_VERSION;
-    if (blobSASSignatureValues.snapshotTime && version < "2018-11-09") {
-        throw RangeError("'version' must be >= '2018-11-09' when providing 'snapshotTime'.");
-    }
-    if (blobSASSignatureValues.blobName === undefined && blobSASSignatureValues.snapshotTime) {
-        throw RangeError("Must provide 'blobName' when providing 'snapshotTime'.");
-    }
-    if (blobSASSignatureValues.versionId && version < "2019-10-10") {
-        throw RangeError("'version' must be >= '2019-10-10' when providing 'versionId'.");
-    }
-    if (blobSASSignatureValues.blobName === undefined && blobSASSignatureValues.versionId) {
-        throw RangeError("Must provide 'blobName' when providing 'versionId'.");
-    }
-    if (blobSASSignatureValues.permissions &&
-        blobSASSignatureValues.permissions.deleteVersion &&
-        version < "2019-10-10") {
-        throw RangeError("'version' must be >= '2019-10-10' when providing 'x' permission.");
-    }
-    if (blobSASSignatureValues.permissions &&
-        blobSASSignatureValues.permissions.tag &&
-        version < "2019-12-12") {
-        throw RangeError("'version' must be >= '2019-12-12' when providing 't' permission.");
-    }
-    if (version < "2020-02-10" &&
-        blobSASSignatureValues.permissions &&
-        (blobSASSignatureValues.permissions.move || blobSASSignatureValues.permissions.execute)) {
-        throw RangeError("'version' must be >= '2020-02-10' when providing the 'm' or 'e' permission.");
-    }
-    if (version < "2020-02-10" &&
-        (blobSASSignatureValues.preauthorizedAgentObjectId || blobSASSignatureValues.correlationId)) {
-        throw RangeError("'version' must be >= '2020-02-10' when providing 'preauthorizedAgentObjectId' or 'correlationId'.");
-    }
-    blobSASSignatureValues.version = version;
-    return blobSASSignatureValues;
-}
 
 Object.defineProperty(exports, 'BaseRequestPolicy', {
     enumerable: true,
@@ -52131,7 +52657,7 @@ module.exports = {
 
 const EventEmitter = __webpack_require__(614);
 const urlLib = __webpack_require__(835);
-const normalizeUrl = __webpack_require__(53);
+const normalizeUrl = __webpack_require__(680);
 const getStream = __webpack_require__(341);
 const CachePolicy = __webpack_require__(154);
 const Response = __webpack_require__(21);
@@ -54751,292 +55277,17 @@ function isBuffer(val) {
 
 /***/ }),
 /* 422 */
-/***/ (function(module) {
+/***/ (function(__unusedmodule, exports) {
 
-/*! *****************************************************************************
-Copyright (c) Microsoft Corporation.
+"use strict";
 
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-***************************************************************************** */
-
-/* global global, define, System, Reflect, Promise */
-var __extends;
-var __assign;
-var __rest;
-var __decorate;
-var __param;
-var __metadata;
-var __awaiter;
-var __generator;
-var __exportStar;
-var __values;
-var __read;
-var __spread;
-var __spreadArrays;
-var __await;
-var __asyncGenerator;
-var __asyncDelegator;
-var __asyncValues;
-var __makeTemplateObject;
-var __importStar;
-var __importDefault;
-var __classPrivateFieldGet;
-var __classPrivateFieldSet;
-var __createBinding;
-(function (factory) {
-    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
-    if (typeof define === "function" && define.amd) {
-        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
-    }
-    else if ( true && typeof module.exports === "object") {
-        factory(createExporter(root, createExporter(module.exports)));
-    }
-    else {
-        factory(createExporter(root));
-    }
-    function createExporter(exports, previous) {
-        if (exports !== root) {
-            if (typeof Object.create === "function") {
-                Object.defineProperty(exports, "__esModule", { value: true });
-            }
-            else {
-                exports.__esModule = true;
-            }
-        }
-        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
-    }
-})
-(function (exporter) {
-    var extendStatics = Object.setPrototypeOf ||
-        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
-
-    __extends = function (d, b) {
-        extendStatics(d, b);
-        function __() { this.constructor = d; }
-        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-    };
-
-    __assign = Object.assign || function (t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
-        }
-        return t;
-    };
-
-    __rest = function (s, e) {
-        var t = {};
-        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-            t[p] = s[p];
-        if (s != null && typeof Object.getOwnPropertySymbols === "function")
-            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-                    t[p[i]] = s[p[i]];
-            }
-        return t;
-    };
-
-    __decorate = function (decorators, target, key, desc) {
-        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-        return c > 3 && r && Object.defineProperty(target, key, r), r;
-    };
-
-    __param = function (paramIndex, decorator) {
-        return function (target, key) { decorator(target, key, paramIndex); }
-    };
-
-    __metadata = function (metadataKey, metadataValue) {
-        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
-    };
-
-    __awaiter = function (thisArg, _arguments, P, generator) {
-        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-        return new (P || (P = Promise))(function (resolve, reject) {
-            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-            step((generator = generator.apply(thisArg, _arguments || [])).next());
-        });
-    };
-
-    __generator = function (thisArg, body) {
-        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-        function verb(n) { return function (v) { return step([n, v]); }; }
-        function step(op) {
-            if (f) throw new TypeError("Generator is already executing.");
-            while (_) try {
-                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-                if (y = 0, t) op = [op[0] & 2, t.value];
-                switch (op[0]) {
-                    case 0: case 1: t = op; break;
-                    case 4: _.label++; return { value: op[1], done: false };
-                    case 5: _.label++; y = op[1]; op = [0]; continue;
-                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                    default:
-                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                        if (t[2]) _.ops.pop();
-                        _.trys.pop(); continue;
-                }
-                op = body.call(thisArg, _);
-            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-        }
-    };
-
-    __createBinding = function(o, m, k, k2) {
-        if (k2 === undefined) k2 = k;
-        o[k2] = m[k];
-    };
-
-    __exportStar = function (m, exports) {
-        for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) exports[p] = m[p];
-    };
-
-    __values = function (o) {
-        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
-        if (m) return m.call(o);
-        if (o && typeof o.length === "number") return {
-            next: function () {
-                if (o && i >= o.length) o = void 0;
-                return { value: o && o[i++], done: !o };
-            }
-        };
-        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
-    };
-
-    __read = function (o, n) {
-        var m = typeof Symbol === "function" && o[Symbol.iterator];
-        if (!m) return o;
-        var i = m.call(o), r, ar = [], e;
-        try {
-            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
-        }
-        catch (error) { e = { error: error }; }
-        finally {
-            try {
-                if (r && !r.done && (m = i["return"])) m.call(i);
-            }
-            finally { if (e) throw e.error; }
-        }
-        return ar;
-    };
-
-    __spread = function () {
-        for (var ar = [], i = 0; i < arguments.length; i++)
-            ar = ar.concat(__read(arguments[i]));
-        return ar;
-    };
-
-    __spreadArrays = function () {
-        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
-        for (var r = Array(s), k = 0, i = 0; i < il; i++)
-            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
-                r[k] = a[j];
-        return r;
-    };
-
-    __await = function (v) {
-        return this instanceof __await ? (this.v = v, this) : new __await(v);
-    };
-
-    __asyncGenerator = function (thisArg, _arguments, generator) {
-        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-        var g = generator.apply(thisArg, _arguments || []), i, q = [];
-        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
-        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
-        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
-        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
-        function fulfill(value) { resume("next", value); }
-        function reject(value) { resume("throw", value); }
-        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
-    };
-
-    __asyncDelegator = function (o) {
-        var i, p;
-        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
-        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
-    };
-
-    __asyncValues = function (o) {
-        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-        var m = o[Symbol.asyncIterator], i;
-        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
-        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
-        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
-    };
-
-    __makeTemplateObject = function (cooked, raw) {
-        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
-        return cooked;
-    };
-
-    __importStar = function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-        result["default"] = mod;
-        return result;
-    };
-
-    __importDefault = function (mod) {
-        return (mod && mod.__esModule) ? mod : { "default": mod };
-    };
-
-    __classPrivateFieldGet = function (receiver, privateMap) {
-        if (!privateMap.has(receiver)) {
-            throw new TypeError("attempted to get private field on non-instance");
-        }
-        return privateMap.get(receiver);
-    };
-
-    __classPrivateFieldSet = function (receiver, privateMap, value) {
-        if (!privateMap.has(receiver)) {
-            throw new TypeError("attempted to set private field on non-instance");
-        }
-        privateMap.set(receiver, value);
-        return value;
-    };
-
-    exporter("__extends", __extends);
-    exporter("__assign", __assign);
-    exporter("__rest", __rest);
-    exporter("__decorate", __decorate);
-    exporter("__param", __param);
-    exporter("__metadata", __metadata);
-    exporter("__awaiter", __awaiter);
-    exporter("__generator", __generator);
-    exporter("__exportStar", __exportStar);
-    exporter("__createBinding", __createBinding);
-    exporter("__values", __values);
-    exporter("__read", __read);
-    exporter("__spread", __spread);
-    exporter("__spreadArrays", __spreadArrays);
-    exporter("__await", __await);
-    exporter("__asyncGenerator", __asyncGenerator);
-    exporter("__asyncDelegator", __asyncDelegator);
-    exporter("__asyncValues", __asyncValues);
-    exporter("__makeTemplateObject", __makeTemplateObject);
-    exporter("__importStar", __importStar);
-    exporter("__importDefault", __importDefault);
-    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
-    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
-});
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isResponseOk = void 0;
+exports.isResponseOk = (response) => {
+    const { statusCode } = response;
+    const limitStatusCode = response.request.options.followRedirect ? 299 : 399;
+    return (statusCode >= 200 && statusCode <= limitStatusCode) || statusCode === 304;
+};
 
 
 /***/ }),
@@ -55711,20 +55962,31 @@ const utils = __importStar(__webpack_require__(15));
 const constants_1 = __webpack_require__(931);
 function getTarPath(args, compressionMethod) {
     return __awaiter(this, void 0, void 0, function* () {
-        const IS_WINDOWS = process.platform === 'win32';
-        if (IS_WINDOWS) {
-            const systemTar = `${process.env['windir']}\\System32\\tar.exe`;
-            if (compressionMethod !== constants_1.CompressionMethod.Gzip) {
-                // We only use zstandard compression on windows when gnu tar is installed due to
-                // a bug with compressing large files with bsdtar + zstd
-                args.push('--force-local');
+        switch (process.platform) {
+            case 'win32': {
+                const systemTar = `${process.env['windir']}\\System32\\tar.exe`;
+                if (compressionMethod !== constants_1.CompressionMethod.Gzip) {
+                    // We only use zstandard compression on windows when gnu tar is installed due to
+                    // a bug with compressing large files with bsdtar + zstd
+                    args.push('--force-local');
+                }
+                else if (fs_1.existsSync(systemTar)) {
+                    return systemTar;
+                }
+                else if (yield utils.isGnuTarInstalled()) {
+                    args.push('--force-local');
+                }
+                break;
             }
-            else if (fs_1.existsSync(systemTar)) {
-                return systemTar;
+            case 'darwin': {
+                const gnuTar = yield io.which('gtar', false);
+                if (gnuTar) {
+                    return gnuTar;
+                }
+                break;
             }
-            else if (yield utils.isGnuTarInstalled()) {
-                args.push('--force-local');
-            }
+            default:
+                break;
         }
         return yield io.which('tar', true);
     });
@@ -55809,6 +56071,32 @@ function createTar(archiveFolder, sourceDirectories, compressionMethod) {
     });
 }
 exports.createTar = createTar;
+function listTar(archivePath, compressionMethod) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // --d: Decompress.
+        // --long=#: Enables long distance matching with # bits.
+        // Maximum is 30 (1GB) on 32-bit OS and 31 (2GB) on 64-bit.
+        // Using 30 here because we also support 32-bit self-hosted runners.
+        function getCompressionProgram() {
+            switch (compressionMethod) {
+                case constants_1.CompressionMethod.Zstd:
+                    return ['--use-compress-program', 'zstd -d --long=30'];
+                case constants_1.CompressionMethod.ZstdWithoutLong:
+                    return ['--use-compress-program', 'zstd -d'];
+                default:
+                    return ['-z'];
+            }
+        }
+        const args = [
+            ...getCompressionProgram(),
+            '-tf',
+            archivePath.replace(new RegExp(`\\${path.sep}`, 'g'), '/'),
+            '-P'
+        ];
+        yield execTar(args, compressionMethod);
+    });
+}
+exports.listTar = listTar;
 //# sourceMappingURL=tar.js.map
 
 /***/ }),
@@ -55985,7 +56273,7 @@ __exportStar(__webpack_require__(975), exports);
 __exportStar(__webpack_require__(70), exports);
 __exportStar(__webpack_require__(694), exports);
 __exportStar(__webpack_require__(695), exports);
-var context_base_1 = __webpack_require__(231);
+var context_base_1 = __webpack_require__(459);
 Object.defineProperty(exports, "Context", { enumerable: true, get: function () { return context_base_1.Context; } });
 var context_1 = __webpack_require__(492);
 /** Entrypoint for context API */
@@ -58826,7 +59114,43 @@ module.exports.default = deferToConnect;
 
 
 /***/ }),
-/* 459 */,
+/* 459 */
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+__exportStar(__webpack_require__(765), exports);
+__exportStar(__webpack_require__(560), exports);
+__exportStar(__webpack_require__(53), exports);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
 /* 460 */
 /***/ (function(module) {
 
@@ -60128,7 +60452,7 @@ module.exports.default = timer;
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ContextAPI = void 0;
-var context_base_1 = __webpack_require__(231);
+var context_base_1 = __webpack_require__(459);
 var global_utils_1 = __webpack_require__(976);
 var NOOP_CONTEXT_MANAGER = new context_base_1.NoopContextManager();
 /**
@@ -63943,7 +64267,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 
 
 
-var isDescriptor = __webpack_require__(221);
+var isDescriptor = __webpack_require__(715);
 
 module.exports = function defineProperty(obj, prop, val) {
   if (typeof obj !== 'object' && typeof obj !== 'function') {
@@ -64364,7 +64688,87 @@ function toString(val) {
 
 
 /***/ }),
-/* 560 */,
+/* 560 */
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Context = void 0;
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+var Context = /** @class */ (function () {
+    /**
+     * Construct a new context which inherits values from an optional parent context.
+     *
+     * @param parentContext a context from which to inherit values
+     */
+    function Context(parentContext) {
+        this._currentContext = parentContext ? new Map(parentContext) : new Map();
+    }
+    /** Get a key to uniquely identify a context value */
+    Context.createKey = function (description) {
+        return Symbol(description);
+    };
+    /**
+     * Get a value from the context.
+     *
+     * @param key key which identifies a context value
+     */
+    Context.prototype.getValue = function (key) {
+        return this._currentContext.get(key);
+    };
+    /**
+     * Create a new context which inherits from this context and has
+     * the given key set to the given value.
+     *
+     * @param key context key for which to set the value
+     * @param value value to set for the given key
+     */
+    Context.prototype.setValue = function (key, value) {
+        var context = new Context(this._currentContext);
+        context._currentContext.set(key, value);
+        return context;
+    };
+    /**
+     * Return a new context which inherits from this context but does
+     * not contain a value for the given key.
+     *
+     * @param key context key for which to clear a value
+     */
+    Context.prototype.deleteValue = function (key) {
+        var context = new Context(this._currentContext);
+        context._currentContext.delete(key);
+        return context;
+    };
+    /** The root context is used as the default parent context when there is no active context */
+    Context.ROOT_CONTEXT = new Context();
+    /**
+     * This is another identifier to the root context which allows developers to easily search the
+     * codebase for direct uses of context which need to be removed in later PRs.
+     *
+     * It's existence is temporary and it should be removed when all references are fixed.
+     */
+    Context.TODO = Context.ROOT_CONTEXT;
+    return Context;
+}());
+exports.Context = Context;
+//# sourceMappingURL=context.js.map
+
+/***/ }),
 /* 561 */,
 /* 562 */
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
@@ -64411,7 +64815,17 @@ exports.getPublicSuffix = getPublicSuffix;
 
 
 /***/ }),
-/* 563 */,
+/* 563 */
+/***/ (function(module) {
+
+var toString = {}.toString;
+
+module.exports = Array.isArray || function (arr) {
+  return toString.call(arr) == '[object Array]';
+};
+
+
+/***/ }),
 /* 564 */
 /***/ (function(module, exports) {
 
@@ -64842,7 +65256,7 @@ module.exports.assert = exports.assert;
 
 
 
-var isArray = __webpack_require__(262);
+var isArray = __webpack_require__(563);
 
 module.exports = function isObject(val) {
   return val != null && typeof val === 'object' && isArray(val) === false;
@@ -65226,7 +65640,11 @@ class CacheableLookup {
 				const newPromise = this.queryAndCache(hostname);
 				this._pending[hostname] = newPromise;
 
-				cached = await newPromise;
+				try {
+					cached = await newPromise;
+				} finally {
+					delete this._pending[hostname];
+				}
 			}
 		}
 
@@ -65340,29 +65758,21 @@ class CacheableLookup {
 			return this._dnsLookup(hostname, all);
 		}
 
-		try {
-			let query = await this._resolve(hostname);
+		let query = await this._resolve(hostname);
 
-			if (query.entries.length === 0 && this._fallback) {
-				query = await this._lookup(hostname);
+		if (query.entries.length === 0 && this._fallback) {
+			query = await this._lookup(hostname);
 
-				if (query.entries.length !== 0) {
-					// Use `dns.lookup(...)` for that particular hostname
-					this._hostnamesToFallback.add(hostname);
-				}
+			if (query.entries.length !== 0) {
+				// Use `dns.lookup(...)` for that particular hostname
+				this._hostnamesToFallback.add(hostname);
 			}
-
-			const cacheTtl = query.entries.length === 0 ? this.errorTtl : query.cacheTtl;
-			await this._set(hostname, query.entries, cacheTtl);
-
-			delete this._pending[hostname];
-
-			return query.entries;
-		} catch (error) {
-			delete this._pending[hostname];
-
-			throw error;
 		}
+
+		const cacheTtl = query.entries.length === 0 ? this.errorTtl : query.cacheTtl;
+		await this._set(hostname, query.entries, cacheTtl);
+
+		return query.entries;
 	}
 
 	_tick(ms) {
@@ -67808,11 +68218,312 @@ function readPackageJSON(dir) {
 
 /***/ }),
 /* 640 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
+/***/ (function(module) {
 
-module.exports = {
-  copySync: __webpack_require__(110)
-}
+/*! *****************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global global, define, System, Reflect, Promise */
+var __extends;
+var __assign;
+var __rest;
+var __decorate;
+var __param;
+var __metadata;
+var __awaiter;
+var __generator;
+var __exportStar;
+var __values;
+var __read;
+var __spread;
+var __spreadArrays;
+var __spreadArray;
+var __await;
+var __asyncGenerator;
+var __asyncDelegator;
+var __asyncValues;
+var __makeTemplateObject;
+var __importStar;
+var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __createBinding;
+(function (factory) {
+    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
+    if (typeof define === "function" && define.amd) {
+        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
+    }
+    else if ( true && typeof module.exports === "object") {
+        factory(createExporter(root, createExporter(module.exports)));
+    }
+    else {
+        factory(createExporter(root));
+    }
+    function createExporter(exports, previous) {
+        if (exports !== root) {
+            if (typeof Object.create === "function") {
+                Object.defineProperty(exports, "__esModule", { value: true });
+            }
+            else {
+                exports.__esModule = true;
+            }
+        }
+        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
+    }
+})
+(function (exporter) {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+
+    __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+
+    __assign = Object.assign || function (t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+
+    __rest = function (s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    };
+
+    __decorate = function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+
+    __param = function (paramIndex, decorator) {
+        return function (target, key) { decorator(target, key, paramIndex); }
+    };
+
+    __metadata = function (metadataKey, metadataValue) {
+        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+    };
+
+    __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    };
+
+    __generator = function (thisArg, body) {
+        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+        function verb(n) { return function (v) { return step([n, v]); }; }
+        function step(op) {
+            if (f) throw new TypeError("Generator is already executing.");
+            while (_) try {
+                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                if (y = 0, t) op = [op[0] & 2, t.value];
+                switch (op[0]) {
+                    case 0: case 1: t = op; break;
+                    case 4: _.label++; return { value: op[1], done: false };
+                    case 5: _.label++; y = op[1]; op = [0]; continue;
+                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                    default:
+                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                        if (t[2]) _.ops.pop();
+                        _.trys.pop(); continue;
+                }
+                op = body.call(thisArg, _);
+            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+        }
+    };
+
+    __exportStar = function(m, o) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+    };
+
+    __createBinding = Object.create ? (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+    }) : (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    });
+
+    __values = function (o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+            next: function () {
+                if (o && i >= o.length) o = void 0;
+                return { value: o && o[i++], done: !o };
+            }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+    };
+
+    __read = function (o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        }
+        catch (error) { e = { error: error }; }
+        finally {
+            try {
+                if (r && !r.done && (m = i["return"])) m.call(i);
+            }
+            finally { if (e) throw e.error; }
+        }
+        return ar;
+    };
+
+    /** @deprecated */
+    __spread = function () {
+        for (var ar = [], i = 0; i < arguments.length; i++)
+            ar = ar.concat(__read(arguments[i]));
+        return ar;
+    };
+
+    /** @deprecated */
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
+    };
+
+    __await = function (v) {
+        return this instanceof __await ? (this.v = v, this) : new __await(v);
+    };
+
+    __asyncGenerator = function (thisArg, _arguments, generator) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var g = generator.apply(thisArg, _arguments || []), i, q = [];
+        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
+        function fulfill(value) { resume("next", value); }
+        function reject(value) { resume("throw", value); }
+        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+    };
+
+    __asyncDelegator = function (o) {
+        var i, p;
+        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+    };
+
+    __asyncValues = function (o) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var m = o[Symbol.asyncIterator], i;
+        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    };
+
+    __makeTemplateObject = function (cooked, raw) {
+        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+        return cooked;
+    };
+
+    var __setModuleDefault = Object.create ? (function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+        o["default"] = v;
+    };
+
+    __importStar = function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+
+    __importDefault = function (mod) {
+        return (mod && mod.__esModule) ? mod : { "default": mod };
+    };
+
+    __classPrivateFieldGet = function (receiver, privateMap) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to get private field on non-instance");
+        }
+        return privateMap.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, privateMap, value) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to set private field on non-instance");
+        }
+        privateMap.set(receiver, value);
+        return value;
+    };
+
+    exporter("__extends", __extends);
+    exporter("__assign", __assign);
+    exporter("__rest", __rest);
+    exporter("__decorate", __decorate);
+    exporter("__param", __param);
+    exporter("__metadata", __metadata);
+    exporter("__awaiter", __awaiter);
+    exporter("__generator", __generator);
+    exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
+    exporter("__values", __values);
+    exporter("__read", __read);
+    exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
+    exporter("__await", __await);
+    exporter("__asyncGenerator", __asyncGenerator);
+    exporter("__asyncDelegator", __asyncDelegator);
+    exporter("__asyncValues", __asyncValues);
+    exporter("__makeTemplateObject", __makeTemplateObject);
+    exporter("__importStar", __importStar);
+    exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+});
 
 
 /***/ }),
@@ -69434,7 +70145,7 @@ exports.default = createRejection;
 "use strict";
 
 
-var safe = __webpack_require__(691);
+var safe = __webpack_require__(328);
 var define = __webpack_require__(32);
 var extend = __webpack_require__(978);
 var not = __webpack_require__(648);
@@ -69597,7 +70308,7 @@ module.exports.makeRe = makeRe;
 
 
 var extend = __webpack_require__(978);
-var safe = __webpack_require__(691);
+var safe = __webpack_require__(328);
 
 /**
  * The main export is a function that takes a `pattern` string and an `options` object.
@@ -71185,7 +71896,234 @@ exports.default = _default;
 /* 677 */,
 /* 678 */,
 /* 679 */,
-/* 680 */,
+/* 680 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+
+// TODO: Use the `URL` global when targeting Node.js 10
+const URLParser = typeof URL === 'undefined' ? __webpack_require__(835).URL : URL;
+
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs
+const DATA_URL_DEFAULT_MIME_TYPE = 'text/plain';
+const DATA_URL_DEFAULT_CHARSET = 'us-ascii';
+
+const testParameter = (name, filters) => {
+	return filters.some(filter => filter instanceof RegExp ? filter.test(name) : filter === name);
+};
+
+const normalizeDataURL = (urlString, {stripHash}) => {
+	const parts = urlString.match(/^data:(.*?),(.*?)(?:#(.*))?$/);
+
+	if (!parts) {
+		throw new Error(`Invalid URL: ${urlString}`);
+	}
+
+	const mediaType = parts[1].split(';');
+	const body = parts[2];
+	const hash = stripHash ? '' : parts[3];
+
+	let base64 = false;
+
+	if (mediaType[mediaType.length - 1] === 'base64') {
+		mediaType.pop();
+		base64 = true;
+	}
+
+	// Lowercase MIME type
+	const mimeType = (mediaType.shift() || '').toLowerCase();
+	const attributes = mediaType
+		.map(attribute => {
+			let [key, value = ''] = attribute.split('=').map(string => string.trim());
+
+			// Lowercase `charset`
+			if (key === 'charset') {
+				value = value.toLowerCase();
+
+				if (value === DATA_URL_DEFAULT_CHARSET) {
+					return '';
+				}
+			}
+
+			return `${key}${value ? `=${value}` : ''}`;
+		})
+		.filter(Boolean);
+
+	const normalizedMediaType = [
+		...attributes
+	];
+
+	if (base64) {
+		normalizedMediaType.push('base64');
+	}
+
+	if (normalizedMediaType.length !== 0 || (mimeType && mimeType !== DATA_URL_DEFAULT_MIME_TYPE)) {
+		normalizedMediaType.unshift(mimeType);
+	}
+
+	return `data:${normalizedMediaType.join(';')},${base64 ? body.trim() : body}${hash ? `#${hash}` : ''}`;
+};
+
+const normalizeUrl = (urlString, options) => {
+	options = {
+		defaultProtocol: 'http:',
+		normalizeProtocol: true,
+		forceHttp: false,
+		forceHttps: false,
+		stripAuthentication: true,
+		stripHash: false,
+		stripWWW: true,
+		removeQueryParameters: [/^utm_\w+/i],
+		removeTrailingSlash: true,
+		removeDirectoryIndex: false,
+		sortQueryParameters: true,
+		...options
+	};
+
+	// TODO: Remove this at some point in the future
+	if (Reflect.has(options, 'normalizeHttps')) {
+		throw new Error('options.normalizeHttps is renamed to options.forceHttp');
+	}
+
+	if (Reflect.has(options, 'normalizeHttp')) {
+		throw new Error('options.normalizeHttp is renamed to options.forceHttps');
+	}
+
+	if (Reflect.has(options, 'stripFragment')) {
+		throw new Error('options.stripFragment is renamed to options.stripHash');
+	}
+
+	urlString = urlString.trim();
+
+	// Data URL
+	if (/^data:/i.test(urlString)) {
+		return normalizeDataURL(urlString, options);
+	}
+
+	const hasRelativeProtocol = urlString.startsWith('//');
+	const isRelativeUrl = !hasRelativeProtocol && /^\.*\//.test(urlString);
+
+	// Prepend protocol
+	if (!isRelativeUrl) {
+		urlString = urlString.replace(/^(?!(?:\w+:)?\/\/)|^\/\//, options.defaultProtocol);
+	}
+
+	const urlObj = new URLParser(urlString);
+
+	if (options.forceHttp && options.forceHttps) {
+		throw new Error('The `forceHttp` and `forceHttps` options cannot be used together');
+	}
+
+	if (options.forceHttp && urlObj.protocol === 'https:') {
+		urlObj.protocol = 'http:';
+	}
+
+	if (options.forceHttps && urlObj.protocol === 'http:') {
+		urlObj.protocol = 'https:';
+	}
+
+	// Remove auth
+	if (options.stripAuthentication) {
+		urlObj.username = '';
+		urlObj.password = '';
+	}
+
+	// Remove hash
+	if (options.stripHash) {
+		urlObj.hash = '';
+	}
+
+	// Remove duplicate slashes if not preceded by a protocol
+	if (urlObj.pathname) {
+		// TODO: Use the following instead when targeting Node.js 10
+		// `urlObj.pathname = urlObj.pathname.replace(/(?<!https?:)\/{2,}/g, '/');`
+		urlObj.pathname = urlObj.pathname.replace(/((?!:).|^)\/{2,}/g, (_, p1) => {
+			if (/^(?!\/)/g.test(p1)) {
+				return `${p1}/`;
+			}
+
+			return '/';
+		});
+	}
+
+	// Decode URI octets
+	if (urlObj.pathname) {
+		urlObj.pathname = decodeURI(urlObj.pathname);
+	}
+
+	// Remove directory index
+	if (options.removeDirectoryIndex === true) {
+		options.removeDirectoryIndex = [/^index\.[a-z]+$/];
+	}
+
+	if (Array.isArray(options.removeDirectoryIndex) && options.removeDirectoryIndex.length > 0) {
+		let pathComponents = urlObj.pathname.split('/');
+		const lastComponent = pathComponents[pathComponents.length - 1];
+
+		if (testParameter(lastComponent, options.removeDirectoryIndex)) {
+			pathComponents = pathComponents.slice(0, pathComponents.length - 1);
+			urlObj.pathname = pathComponents.slice(1).join('/') + '/';
+		}
+	}
+
+	if (urlObj.hostname) {
+		// Remove trailing dot
+		urlObj.hostname = urlObj.hostname.replace(/\.$/, '');
+
+		// Remove `www.`
+		if (options.stripWWW && /^www\.([a-z\-\d]{2,63})\.([a-z.]{2,5})$/.test(urlObj.hostname)) {
+			// Each label should be max 63 at length (min: 2).
+			// The extension should be max 5 at length (min: 2).
+			// Source: https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_host_names
+			urlObj.hostname = urlObj.hostname.replace(/^www\./, '');
+		}
+	}
+
+	// Remove query unwanted parameters
+	if (Array.isArray(options.removeQueryParameters)) {
+		for (const key of [...urlObj.searchParams.keys()]) {
+			if (testParameter(key, options.removeQueryParameters)) {
+				urlObj.searchParams.delete(key);
+			}
+		}
+	}
+
+	// Sort query parameters
+	if (options.sortQueryParameters) {
+		urlObj.searchParams.sort();
+	}
+
+	if (options.removeTrailingSlash) {
+		urlObj.pathname = urlObj.pathname.replace(/\/$/, '');
+	}
+
+	// Take advantage of many of the Node `url` normalizations
+	urlString = urlObj.toString();
+
+	// Remove ending `/`
+	if ((options.removeTrailingSlash || urlObj.pathname === '/') && urlObj.hash === '') {
+		urlString = urlString.replace(/\/$/, '');
+	}
+
+	// Restore relative protocol, if applicable
+	if (hasRelativeProtocol && !options.normalizeProtocol) {
+		urlString = urlString.replace(/^http:\/\//, '//');
+	}
+
+	// Remove http/https
+	if (options.stripProtocol) {
+		urlString = urlString.replace(/^(?:https?:)?\/\//, '');
+	}
+
+	return urlString;
+};
+
+module.exports = normalizeUrl;
+// TODO: Remove this for the next major release
+module.exports.default = normalizeUrl;
+
+
+/***/ }),
 /* 681 */,
 /* 682 */,
 /* 683 */
@@ -71341,55 +72279,7 @@ module.exports = function hasValue(val) {
 /***/ }),
 /* 689 */,
 /* 690 */,
-/* 691 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-var parse = __webpack_require__(763);
-var types = parse.types;
-
-module.exports = function (re, opts) {
-    if (!opts) opts = {};
-    var replimit = opts.limit === undefined ? 25 : opts.limit;
-    
-    if (isRegExp(re)) re = re.source;
-    else if (typeof re !== 'string') re = String(re);
-    
-    try { re = parse(re) }
-    catch (err) { return false }
-    
-    var reps = 0;
-    return (function walk (node, starHeight) {
-        if (node.type === types.REPETITION) {
-            starHeight ++;
-            reps ++;
-            if (starHeight > 1) return false;
-            if (reps > replimit) return false;
-        }
-        
-        if (node.options) {
-            for (var i = 0, len = node.options.length; i < len; i++) {
-                var ok = walk({ stack: node.options[i] }, starHeight);
-                if (!ok) return false;
-            }
-        }
-        var stack = node.stack || (node.value && node.value.stack);
-        if (!stack) return true;
-        
-        for (var i = 0; i < stack.length; i++) {
-            var ok = walk(stack[i], starHeight);
-            if (!ok) return false;
-        }
-        
-        return true;
-    })(re, 0);
-};
-
-function isRegExp (x) {
-    return {}.toString.call(x) === '[object RegExp]';
-}
-
-
-/***/ }),
+/* 691 */,
 /* 692 */
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -71483,9 +72373,13 @@ function restoreCache(paths, primaryKey, restoreKeys, options) {
         try {
             // Download the cache from the cache entry
             yield cacheHttpClient.downloadCache(cacheEntry.archiveLocation, archivePath, options);
+            if (core.isDebug()) {
+                yield tar_1.listTar(archivePath, compressionMethod);
+            }
             const archiveFileSize = utils.getArchiveFileSizeIsBytes(archivePath);
             core.info(`Cache Size: ~${Math.round(archiveFileSize / (1024 * 1024))} MB (${archiveFileSize} B)`);
             yield tar_1.extractTar(archivePath, compressionMethod);
+            core.info('Cache restored successfully');
         }
         finally {
             // Try to delete the archive to save space
@@ -71528,6 +72422,9 @@ function saveCache(paths, key, options) {
         const archivePath = path.join(archiveFolder, utils.getCacheFileName(compressionMethod));
         core.debug(`Archive Path: ${archivePath}`);
         yield tar_1.createTar(archiveFolder, cachePaths, compressionMethod);
+        if (core.isDebug()) {
+            yield tar_1.listTar(archivePath, compressionMethod);
+        }
         const fileSizeLimit = 5 * 1024 * 1024 * 1024; // 5GB per repo limit
         const archiveFileSize = utils.getArchiveFileSizeIsBytes(archivePath);
         core.debug(`File Size: ${archiveFileSize}`);
@@ -71556,7 +72453,7 @@ exports.saveCache = saveCache;
 
 
 
-var isDescriptor = __webpack_require__(221);
+var isDescriptor = __webpack_require__(715);
 
 module.exports = function defineProperty(obj, prop, val) {
   if (typeof obj !== 'object' && typeof obj !== 'function') {
@@ -72310,84 +73207,32 @@ module.exports = function isObject(val) {
 /* 713 */,
 /* 714 */,
 /* 715 */
-/***/ (function(__unusedmodule, exports) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
 "use strict";
-
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Context = void 0;
-/*
- * Copyright The OpenTelemetry Authors
+/*!
+ * is-descriptor <https://github.com/jonschlinkert/is-descriptor>
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015-2017, Jon Schlinkert.
+ * Released under the MIT License.
  */
-var Context = /** @class */ (function () {
-    /**
-     * Construct a new context which inherits values from an optional parent context.
-     *
-     * @param parentContext a context from which to inherit values
-     */
-    function Context(parentContext) {
-        this._currentContext = parentContext ? new Map(parentContext) : new Map();
-    }
-    /** Get a key to uniquely identify a context value */
-    Context.createKey = function (description) {
-        return Symbol(description);
-    };
-    /**
-     * Get a value from the context.
-     *
-     * @param key key which identifies a context value
-     */
-    Context.prototype.getValue = function (key) {
-        return this._currentContext.get(key);
-    };
-    /**
-     * Create a new context which inherits from this context and has
-     * the given key set to the given value.
-     *
-     * @param key context key for which to set the value
-     * @param value value to set for the given key
-     */
-    Context.prototype.setValue = function (key, value) {
-        var context = new Context(this._currentContext);
-        context._currentContext.set(key, value);
-        return context;
-    };
-    /**
-     * Return a new context which inherits from this context but does
-     * not contain a value for the given key.
-     *
-     * @param key context key for which to clear a value
-     */
-    Context.prototype.deleteValue = function (key) {
-        var context = new Context(this._currentContext);
-        context._currentContext.delete(key);
-        return context;
-    };
-    /** The root context is used as the default parent context when there is no active context */
-    Context.ROOT_CONTEXT = new Context();
-    /**
-     * This is another identifier to the root context which allows developers to easily search the
-     * codebase for direct uses of context which need to be removed in later PRs.
-     *
-     * It's existence is temporary and it should be removed when all references are fixed.
-     */
-    Context.TODO = Context.ROOT_CONTEXT;
-    return Context;
-}());
-exports.Context = Context;
-//# sourceMappingURL=context.js.map
+
+
+
+var typeOf = __webpack_require__(421);
+var isAccessor = __webpack_require__(209);
+var isData = __webpack_require__(447);
+
+module.exports = function isDescriptor(obj, key) {
+  if (typeOf(obj) !== 'object') {
+    return false;
+  }
+  if ('get' in obj) {
+    return isAccessor(obj, key);
+  }
+  return isData(obj, key);
+};
+
 
 /***/ }),
 /* 716 */,
@@ -72625,7 +73470,316 @@ module.exports = {
 
 
 /***/ }),
-/* 725 */,
+/* 725 */
+/***/ (function(module) {
+
+/*! *****************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global global, define, System, Reflect, Promise */
+var __extends;
+var __assign;
+var __rest;
+var __decorate;
+var __param;
+var __metadata;
+var __awaiter;
+var __generator;
+var __exportStar;
+var __values;
+var __read;
+var __spread;
+var __spreadArrays;
+var __spreadArray;
+var __await;
+var __asyncGenerator;
+var __asyncDelegator;
+var __asyncValues;
+var __makeTemplateObject;
+var __importStar;
+var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __createBinding;
+(function (factory) {
+    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
+    if (typeof define === "function" && define.amd) {
+        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
+    }
+    else if ( true && typeof module.exports === "object") {
+        factory(createExporter(root, createExporter(module.exports)));
+    }
+    else {
+        factory(createExporter(root));
+    }
+    function createExporter(exports, previous) {
+        if (exports !== root) {
+            if (typeof Object.create === "function") {
+                Object.defineProperty(exports, "__esModule", { value: true });
+            }
+            else {
+                exports.__esModule = true;
+            }
+        }
+        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
+    }
+})
+(function (exporter) {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+
+    __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+
+    __assign = Object.assign || function (t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+
+    __rest = function (s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    };
+
+    __decorate = function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+
+    __param = function (paramIndex, decorator) {
+        return function (target, key) { decorator(target, key, paramIndex); }
+    };
+
+    __metadata = function (metadataKey, metadataValue) {
+        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+    };
+
+    __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    };
+
+    __generator = function (thisArg, body) {
+        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+        function verb(n) { return function (v) { return step([n, v]); }; }
+        function step(op) {
+            if (f) throw new TypeError("Generator is already executing.");
+            while (_) try {
+                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                if (y = 0, t) op = [op[0] & 2, t.value];
+                switch (op[0]) {
+                    case 0: case 1: t = op; break;
+                    case 4: _.label++; return { value: op[1], done: false };
+                    case 5: _.label++; y = op[1]; op = [0]; continue;
+                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                    default:
+                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                        if (t[2]) _.ops.pop();
+                        _.trys.pop(); continue;
+                }
+                op = body.call(thisArg, _);
+            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+        }
+    };
+
+    __exportStar = function(m, o) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+    };
+
+    __createBinding = Object.create ? (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+    }) : (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    });
+
+    __values = function (o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+            next: function () {
+                if (o && i >= o.length) o = void 0;
+                return { value: o && o[i++], done: !o };
+            }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+    };
+
+    __read = function (o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        }
+        catch (error) { e = { error: error }; }
+        finally {
+            try {
+                if (r && !r.done && (m = i["return"])) m.call(i);
+            }
+            finally { if (e) throw e.error; }
+        }
+        return ar;
+    };
+
+    /** @deprecated */
+    __spread = function () {
+        for (var ar = [], i = 0; i < arguments.length; i++)
+            ar = ar.concat(__read(arguments[i]));
+        return ar;
+    };
+
+    /** @deprecated */
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
+    };
+
+    __await = function (v) {
+        return this instanceof __await ? (this.v = v, this) : new __await(v);
+    };
+
+    __asyncGenerator = function (thisArg, _arguments, generator) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var g = generator.apply(thisArg, _arguments || []), i, q = [];
+        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
+        function fulfill(value) { resume("next", value); }
+        function reject(value) { resume("throw", value); }
+        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+    };
+
+    __asyncDelegator = function (o) {
+        var i, p;
+        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+    };
+
+    __asyncValues = function (o) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var m = o[Symbol.asyncIterator], i;
+        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    };
+
+    __makeTemplateObject = function (cooked, raw) {
+        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+        return cooked;
+    };
+
+    var __setModuleDefault = Object.create ? (function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+        o["default"] = v;
+    };
+
+    __importStar = function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+
+    __importDefault = function (mod) {
+        return (mod && mod.__esModule) ? mod : { "default": mod };
+    };
+
+    __classPrivateFieldGet = function (receiver, privateMap) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to get private field on non-instance");
+        }
+        return privateMap.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, privateMap, value) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to set private field on non-instance");
+        }
+        privateMap.set(receiver, value);
+        return value;
+    };
+
+    exporter("__extends", __extends);
+    exporter("__assign", __assign);
+    exporter("__rest", __rest);
+    exporter("__decorate", __decorate);
+    exporter("__param", __param);
+    exporter("__metadata", __metadata);
+    exporter("__awaiter", __awaiter);
+    exporter("__generator", __generator);
+    exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
+    exporter("__values", __values);
+    exporter("__read", __read);
+    exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
+    exporter("__await", __await);
+    exporter("__asyncGenerator", __asyncGenerator);
+    exporter("__asyncDelegator", __asyncDelegator);
+    exporter("__asyncValues", __asyncValues);
+    exporter("__makeTemplateObject", __makeTemplateObject);
+    exporter("__importStar", __importStar);
+    exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+});
+
+
+/***/ }),
 /* 726 */,
 /* 727 */
 /***/ (function(__unusedmodule, exports) {
@@ -73228,7 +74382,7 @@ module.exports = header => {
 
 
 
-var isDescriptor = __webpack_require__(221);
+var isDescriptor = __webpack_require__(715);
 
 module.exports = function defineProperty(obj, prop, val) {
   if (typeof obj !== 'object' && typeof obj !== 'function') {
@@ -75028,7 +76182,30 @@ __exportStar(__webpack_require__(145), exports);
 //# sourceMappingURL=index.js.map
 
 /***/ }),
-/* 765 */,
+/* 765 */
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+//# sourceMappingURL=types.js.map
+
+/***/ }),
 /* 766 */
 /***/ (function(module) {
 
@@ -78149,6 +79326,7 @@ var __values;
 var __read;
 var __spread;
 var __spreadArrays;
+var __spreadArray;
 var __await;
 var __asyncGenerator;
 var __asyncDelegator;
@@ -78188,6 +79366,8 @@ var __createBinding;
         function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
 
     __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
         extendStatics(d, b);
         function __() { this.constructor = d; }
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
@@ -78307,18 +79487,26 @@ var __createBinding;
         return ar;
     };
 
+    /** @deprecated */
     __spread = function () {
         for (var ar = [], i = 0; i < arguments.length; i++)
             ar = ar.concat(__read(arguments[i]));
         return ar;
     };
 
+    /** @deprecated */
     __spreadArrays = function () {
         for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
         for (var r = Array(s), k = 0, i = 0; i < il; i++)
             for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
                 r[k] = a[j];
         return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
     };
 
     __await = function (v) {
@@ -78403,6 +79591,7 @@ var __createBinding;
     exporter("__read", __read);
     exporter("__spread", __spread);
     exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
     exporter("__await", __await);
     exporter("__asyncGenerator", __asyncGenerator);
     exporter("__asyncDelegator", __asyncDelegator);
@@ -78467,7 +79656,15 @@ function sync (path, options) {
 
 /***/ }),
 /* 819 */,
-/* 820 */,
+/* 820 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+module.exports = {
+  copySync: __webpack_require__(110)
+}
+
+
+/***/ }),
 /* 821 */
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -80861,6 +82058,7 @@ var __values;
 var __read;
 var __spread;
 var __spreadArrays;
+var __spreadArray;
 var __await;
 var __asyncGenerator;
 var __asyncDelegator;
@@ -80900,6 +82098,8 @@ var __createBinding;
         function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
 
     __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
         extendStatics(d, b);
         function __() { this.constructor = d; }
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
@@ -81019,18 +82219,26 @@ var __createBinding;
         return ar;
     };
 
+    /** @deprecated */
     __spread = function () {
         for (var ar = [], i = 0; i < arguments.length; i++)
             ar = ar.concat(__read(arguments[i]));
         return ar;
     };
 
+    /** @deprecated */
     __spreadArrays = function () {
         for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
         for (var r = Array(s), k = 0, i = 0; i < il; i++)
             for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
                 r[k] = a[j];
         return r;
+    };
+
+    __spreadArray = function (to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
     };
 
     __await = function (v) {
@@ -81115,6 +82323,7 @@ var __createBinding;
     exporter("__read", __read);
     exporter("__spread", __spread);
     exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
     exporter("__await", __await);
     exporter("__asyncGenerator", __asyncGenerator);
     exporter("__asyncDelegator", __asyncDelegator);
@@ -81362,7 +82571,7 @@ exports.TraceAPI = TraceAPI;
 
 
 
-var isDescriptor = __webpack_require__(221);
+var isDescriptor = __webpack_require__(715);
 
 module.exports = function defineProperty(obj, prop, val) {
   if (typeof obj !== 'object' && typeof obj !== 'function') {
@@ -82007,13 +83216,13 @@ module.exports = function repeat(ele, num) {
  * Licensed under the MIT License. See License.txt in the project root for
  * license information.
  * 
- * Azure Core LRO SDK for JavaScript - 1.0.2
+ * Azure Core LRO SDK for JavaScript - 1.0.3
  */
 
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
-var tslib = __webpack_require__(422);
+var tslib = __webpack_require__(725);
 
 // Copyright (c) Microsoft Corporation.
 /**
@@ -82105,9 +83314,10 @@ var PollerCancelledError = /** @class */ (function (_super) {
  * ```
  *
  */
+// eslint-disable-next-line no-use-before-define
 var Poller = /** @class */ (function () {
     /**
-     * A poller needs to be initialized by passing in at least the basic properties of the PollOperation<TState, TResult>.
+     * A poller needs to be initialized by passing in at least the basic properties of the `PollOperation<TState, TResult>`.
      *
      * When writing an implementation of a Poller, this implementation needs to deal with the initialization
      * of any custom state beyond the basic definition of the poller. The basic poller assumes that the poller's
@@ -82169,7 +83379,7 @@ var Poller = /** @class */ (function () {
      * }
      * ```
      *
-     * @param operation Must contain the basic properties of PollOperation<State, TResult>.
+     * @param operation - Must contain the basic properties of `PollOperation<State, TResult>`.
      */
     function Poller(operation) {
         var _this = this;
@@ -82183,11 +83393,13 @@ var Poller = /** @class */ (function () {
         // This prevents the UnhandledPromiseRejectionWarning in node.js from being thrown.
         // The above warning would get thrown if `poller.poll` is called, it returns an error,
         // and pullUntilDone did not have a .catch or await try/catch on it's return value.
-        this.promise.catch(function () { });
+        this.promise.catch(function () {
+            /* intentionally blank */
+        });
     }
     /**
      * @internal
-     * @ignore
+     * @hidden
      * Starts a loop that will break only if the poller is done
      * or if the poller is stopped.
      */
@@ -82216,13 +83428,13 @@ var Poller = /** @class */ (function () {
     };
     /**
      * @internal
-     * @ignore
+     * @hidden
      * pollOnce does one polling, by calling to the update method of the underlying
      * poll operation to make any relevant change effective.
      *
-     * It only optionally receives an object with an abortSignal property, from @azure/abort-controller's AbortSignalLike.
+     * It only optionally receives an object with an abortSignal property, from \@azure/abort-controller's AbortSignalLike.
      *
-     * @param options Optional properties passed to the operation's update method.
+     * @param options - Optional properties passed to the operation's update method.
      */
     Poller.prototype.pollOnce = function (options) {
         if (options === void 0) { options = {}; }
@@ -82244,6 +83456,11 @@ var Poller = /** @class */ (function () {
                     case 2:
                         _a.operation = _b.sent();
                         if (this.isDone() && this.resolve) {
+                            // If the poller has finished polling, this means we now have a result.
+                            // However, it can be the case that TResult is instantiated to void, so
+                            // we are not expecting a result anyway. To assert that we might not
+                            // have a result eventually after finishing polling, we cast the result
+                            // to TResult.
                             this.resolve(state.result);
                         }
                         _b.label = 3;
@@ -82262,13 +83479,13 @@ var Poller = /** @class */ (function () {
     };
     /**
      * @internal
-     * @ignore
+     * @hidden
      * fireProgress calls the functions passed in via onProgress the method of the poller.
      *
      * It loops over all of the callbacks received from onProgress, and executes them, sending them
      * the current operation state.
      *
-     * @param state The current operation state.
+     * @param state - The current operation state.
      */
     Poller.prototype.fireProgress = function (state) {
         for (var _i = 0, _a = this.pollProgressCallbacks; _i < _a.length; _i++) {
@@ -82278,7 +83495,7 @@ var Poller = /** @class */ (function () {
     };
     /**
      * @internal
-     * @ignore
+     * @hidden
      * Invokes the underlying operation's cancel method, and rejects the
      * pollUntilDone promise.
      */
@@ -82305,9 +83522,9 @@ var Poller = /** @class */ (function () {
      * Returns a promise that will resolve once a single polling request finishes.
      * It does this by calling the update method of the Poller's operation.
      *
-     * It only optionally receives an object with an abortSignal property, from @azure/abort-controller's AbortSignalLike.
+     * It only optionally receives an object with an abortSignal property, from \@azure/abort-controller's AbortSignalLike.
      *
-     * @param options Optional properties passed to the operation's update method.
+     * @param options - Optional properties passed to the operation's update method.
      */
     Poller.prototype.poll = function (options) {
         var _this = this;
@@ -82317,7 +83534,7 @@ var Poller = /** @class */ (function () {
             var clearPollOncePromise = function () {
                 _this.pollOncePromise = undefined;
             };
-            this.pollOncePromise.then(clearPollOncePromise, clearPollOncePromise);
+            this.pollOncePromise.then(clearPollOncePromise, clearPollOncePromise).catch(this.reject);
         }
         return this.pollOncePromise;
     };
@@ -82374,11 +83591,11 @@ var Poller = /** @class */ (function () {
     /**
      * Attempts to cancel the underlying operation.
      *
-     * It only optionally receives an object with an abortSignal property, from @azure/abort-controller's AbortSignalLike.
+     * It only optionally receives an object with an abortSignal property, from \@azure/abort-controller's AbortSignalLike.
      *
      * If it's called again before it finishes, it will throw an error.
      *
-     * @param options Optional properties passed to the operation's update method.
+     * @param options - Optional properties passed to the operation's update method.
      */
     Poller.prototype.cancelOperation = function (options) {
         if (options === void 0) { options = {}; }
@@ -83925,50 +85142,125 @@ exports.Pattern = Pattern;
 
 /***/ }),
 /* 924 */
-/***/ (function(__unusedmodule, exports, __webpack_require__) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
-"use strict";
+var isBuffer = __webpack_require__(812);
+var toString = Object.prototype.toString;
 
-/*
- * Copyright The OpenTelemetry Authors
+/**
+ * Get the native `typeof` a value.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @param  {*} `val`
+ * @return {*} Native javascript type
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.NoopContextManager = void 0;
-var context_1 = __webpack_require__(715);
-var NoopContextManager = /** @class */ (function () {
-    function NoopContextManager() {
-    }
-    NoopContextManager.prototype.active = function () {
-        return context_1.Context.ROOT_CONTEXT;
-    };
-    NoopContextManager.prototype.with = function (context, fn) {
-        return fn();
-    };
-    NoopContextManager.prototype.bind = function (target, context) {
-        return target;
-    };
-    NoopContextManager.prototype.enable = function () {
-        return this;
-    };
-    NoopContextManager.prototype.disable = function () {
-        return this;
-    };
-    return NoopContextManager;
-}());
-exports.NoopContextManager = NoopContextManager;
-//# sourceMappingURL=NoopContextManager.js.map
+
+module.exports = function kindOf(val) {
+  // primitivies
+  if (typeof val === 'undefined') {
+    return 'undefined';
+  }
+  if (val === null) {
+    return 'null';
+  }
+  if (val === true || val === false || val instanceof Boolean) {
+    return 'boolean';
+  }
+  if (typeof val === 'string' || val instanceof String) {
+    return 'string';
+  }
+  if (typeof val === 'number' || val instanceof Number) {
+    return 'number';
+  }
+
+  // functions
+  if (typeof val === 'function' || val instanceof Function) {
+    return 'function';
+  }
+
+  // array
+  if (typeof Array.isArray !== 'undefined' && Array.isArray(val)) {
+    return 'array';
+  }
+
+  // check for instances of RegExp and Date before calling `toString`
+  if (val instanceof RegExp) {
+    return 'regexp';
+  }
+  if (val instanceof Date) {
+    return 'date';
+  }
+
+  // other objects
+  var type = toString.call(val);
+
+  if (type === '[object RegExp]') {
+    return 'regexp';
+  }
+  if (type === '[object Date]') {
+    return 'date';
+  }
+  if (type === '[object Arguments]') {
+    return 'arguments';
+  }
+  if (type === '[object Error]') {
+    return 'error';
+  }
+
+  // buffer
+  if (isBuffer(val)) {
+    return 'buffer';
+  }
+
+  // es6: Map, WeakMap, Set, WeakSet
+  if (type === '[object Set]') {
+    return 'set';
+  }
+  if (type === '[object WeakSet]') {
+    return 'weakset';
+  }
+  if (type === '[object Map]') {
+    return 'map';
+  }
+  if (type === '[object WeakMap]') {
+    return 'weakmap';
+  }
+  if (type === '[object Symbol]') {
+    return 'symbol';
+  }
+
+  // typed arrays
+  if (type === '[object Int8Array]') {
+    return 'int8array';
+  }
+  if (type === '[object Uint8Array]') {
+    return 'uint8array';
+  }
+  if (type === '[object Uint8ClampedArray]') {
+    return 'uint8clampedarray';
+  }
+  if (type === '[object Int16Array]') {
+    return 'int16array';
+  }
+  if (type === '[object Uint16Array]') {
+    return 'uint16array';
+  }
+  if (type === '[object Int32Array]') {
+    return 'int32array';
+  }
+  if (type === '[object Uint32Array]') {
+    return 'uint32array';
+  }
+  if (type === '[object Float32Array]') {
+    return 'float32array';
+  }
+  if (type === '[object Float64Array]') {
+    return 'float64array';
+  }
+
+  // must be a plain object
+  return 'object';
+};
+
 
 /***/ }),
 /* 925 */,
@@ -83984,11 +85276,11 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
-var tslib = __webpack_require__(422);
+var tslib = __webpack_require__(262);
 var util = _interopDefault(__webpack_require__(669));
 var os = __webpack_require__(87);
 
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation.
 function log(message) {
     var args = [];
     for (var _i = 1; _i < arguments.length; _i++) {
@@ -83997,7 +85289,7 @@ function log(message) {
     process.stderr.write("" + util.format.apply(util, tslib.__spread([message], args)) + os.EOL);
 }
 
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation.
 var debugEnvVariable = (typeof process !== "undefined" && process.env && process.env.DEBUG) || undefined;
 var enabledString;
 var enabledNamespaces = [];
@@ -84006,6 +85298,14 @@ var debuggers = [];
 if (debugEnvVariable) {
     enable(debugEnvVariable);
 }
+var debugObj = Object.assign(function (namespace) {
+    return createDebugger(namespace);
+}, {
+    enable: enable,
+    enabled: enabled,
+    disable: disable,
+    log: log
+});
 function enable(namespaces) {
     var e_1, _a, e_2, _b;
     enabledString = namespaces;
@@ -84067,8 +85367,8 @@ function enabled(namespace) {
     }
     try {
         for (var enabledNamespaces_1 = tslib.__values(enabledNamespaces), enabledNamespaces_1_1 = enabledNamespaces_1.next(); !enabledNamespaces_1_1.done; enabledNamespaces_1_1 = enabledNamespaces_1.next()) {
-            var enabled_1 = enabledNamespaces_1_1.value;
-            if (enabled_1.test(namespace)) {
+            var enabledNamespace = enabledNamespaces_1_1.value;
+            if (enabledNamespace.test(namespace)) {
                 return true;
             }
         }
@@ -84088,6 +85388,13 @@ function disable() {
     return result;
 }
 function createDebugger(namespace) {
+    var newDebugger = Object.assign(debug, {
+        enabled: enabled(namespace),
+        destroy: destroy,
+        log: debugObj.log,
+        namespace: namespace,
+        extend: extend
+    });
     function debug() {
         var args = [];
         for (var _i = 0; _i < arguments.length; _i++) {
@@ -84101,13 +85408,6 @@ function createDebugger(namespace) {
         }
         newDebugger.log.apply(newDebugger, tslib.__spread(args));
     }
-    var newDebugger = Object.assign(debug, {
-        enabled: enabled(namespace),
-        destroy: destroy,
-        log: debugObj.log,
-        namespace: namespace,
-        extend: extend
-    });
     debuggers.push(newDebugger);
     return newDebugger;
 }
@@ -84124,16 +85424,8 @@ function extend(namespace) {
     newDebugger.log = this.log;
     return newDebugger;
 }
-var debugObj = Object.assign(function (namespace) {
-    return createDebugger(namespace);
-}, {
-    enable: enable,
-    enabled: enabled,
-    disable: disable,
-    log: log
-});
 
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation.
 var registeredLoggers = new Set();
 var logLevelFromEnv = (typeof process !== "undefined" && process.env && process.env.AZURE_LOG_LEVEL) || undefined;
 var azureLogLevel;
@@ -84162,7 +85454,7 @@ if (logLevelFromEnv) {
 }
 /**
  * Immediately enables logging at the specified log level.
- * @param level The log level to enable for logging.
+ * @param level - The log level to enable for logging.
  * Options from most verbose to least verbose are:
  * - verbose
  * - info
@@ -84207,8 +85499,8 @@ var levelMap = {
 };
 /**
  * Creates a logger for use by the Azure SDKs that inherits from `AzureLogger`.
- * @param namespace The name of the SDK package.
- * @ignore
+ * @param namespace - The name of the SDK package.
+ * @hidden
  */
 function createClientLogger(namespace) {
     var clientRootLogger = AzureLogger.extend(namespace);
@@ -84261,21 +85553,7 @@ exports.setLogLevel = setLogLevel;
 
 
 /***/ }),
-/* 929 */
-/***/ (function(__unusedmodule, exports) {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.isResponseOk = void 0;
-exports.isResponseOk = (response) => {
-    const { statusCode } = response;
-    const limitStatusCode = response.request.options.followRedirect ? 299 : 399;
-    return (statusCode >= 200 && statusCode <= limitStatusCode) || statusCode === 304;
-};
-
-
-/***/ }),
+/* 929 */,
 /* 930 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -84732,6 +86010,7 @@ module.exports = function kindOf(val) {
 
 const core = __webpack_require__(470)
 const got = __webpack_require__(537)
+const debug = __webpack_require__(784)('@cypress/github-action')
 
 /**
  * A small utility for checking when an URL responds, kind of
@@ -84750,11 +86029,16 @@ const ping = (url, timeout) => {
   // we expect the server to respond within a time limit
   // and if it does not - retry up to total "timeout" duration
   const individualPingTimeout = Math.min(timeout, 30000)
+
+  // add to the timeout max individual ping timeout
+  // to avoid long-waiting ping from "rolling" over the end
+  // and preventing pinging the last time
+  timeout += individualPingTimeout
   const limit = Math.ceil(timeout / individualPingTimeout)
 
-  core.debug(`total ping timeout ${timeout}`)
-  core.debug(`individual ping timeout ${individualPingTimeout}ms`)
-  core.debug(`retries limit ${limit}`)
+  debug(`total ping timeout ${timeout}`)
+  debug(`individual ping timeout ${individualPingTimeout}ms`)
+  debug(`retries limit ${limit}`)
 
   const start = +new Date()
   return got(url, {
@@ -84767,19 +86051,21 @@ const ping = (url, timeout) => {
       limit,
       calculateDelay({ error, attemptCount }) {
         if (error) {
-          core.debug(`got error ${JSON.stringify(error)}`)
+          debug(`got error ${JSON.stringify(error)}`)
         }
         const now = +new Date()
         const elapsed = now - start
-        core.debug(
+        debug(
           `${elapsed}ms ${error.method} ${error.host} ${error.code} attempt ${attemptCount}`
         )
         if (elapsed > timeout) {
           console.error(
-            '%s timed out on retry %d of %d',
+            '%s timed out on retry %d of %d, elapsed %dms, limit %dms',
             url,
             attemptCount,
-            limit
+            limit,
+            elapsed,
+            timeout
           )
           return 0
         }
@@ -84797,7 +86083,7 @@ const ping = (url, timeout) => {
   }).then(() => {
     const now = +new Date()
     const elapsed = now - start
-    core.debug(`pinging ${url} has finished ok after ${elapsed}ms`)
+    debug(`pinging ${url} has finished ok after ${elapsed}ms`)
   })
 }
 
@@ -85161,7 +86447,7 @@ const parse_body_1 = __webpack_require__(121);
 const core_1 = __webpack_require__(35);
 const proxy_events_1 = __webpack_require__(98);
 const get_buffer_1 = __webpack_require__(452);
-const is_response_ok_1 = __webpack_require__(929);
+const is_response_ok_1 = __webpack_require__(422);
 const proxiedRequestEvents = [
     'request',
     'response',
@@ -87242,7 +88528,7 @@ module.exports = (fromStream, toStream) => {
 
 const fs = __webpack_require__(598)
 const path = __webpack_require__(622)
-const copySync = __webpack_require__(640).copySync
+const copySync = __webpack_require__(820).copySync
 const removeSync = __webpack_require__(723).removeSync
 const mkdirpSync = __webpack_require__(63).mkdirsSync
 const buffer = __webpack_require__(73)
@@ -88390,9 +89676,9 @@ var FormData = _interopDefault(__webpack_require__(790));
 var util = __webpack_require__(669);
 var url = __webpack_require__(835);
 var stream = __webpack_require__(794);
+var logger$1 = __webpack_require__(928);
 var tunnel = __webpack_require__(413);
 var coreAuth = __webpack_require__(229);
-var logger$1 = __webpack_require__(928);
 var xml2js = __webpack_require__(992);
 var os = __webpack_require__(87);
 var coreTracing = __webpack_require__(263);
@@ -88407,20 +89693,20 @@ function getHeaderKey(headerName) {
     return headerName.toLowerCase();
 }
 function isHttpHeadersLike(object) {
-    if (!object || typeof object !== "object") {
-        return false;
-    }
-    if (typeof object.rawHeaders === "function" &&
-        typeof object.clone === "function" &&
-        typeof object.get === "function" &&
-        typeof object.set === "function" &&
-        typeof object.contains === "function" &&
-        typeof object.remove === "function" &&
-        typeof object.headersArray === "function" &&
-        typeof object.headerValues === "function" &&
-        typeof object.headerNames === "function" &&
-        typeof object.toJson === "function") {
-        return true;
+    if (object && typeof object === "object") {
+        var castObject = object;
+        if (typeof castObject.rawHeaders === "function" &&
+            typeof castObject.clone === "function" &&
+            typeof castObject.get === "function" &&
+            typeof castObject.set === "function" &&
+            typeof castObject.contains === "function" &&
+            typeof castObject.remove === "function" &&
+            typeof castObject.headersArray === "function" &&
+            typeof castObject.headerValues === "function" &&
+            typeof castObject.headerNames === "function" &&
+            typeof castObject.toJson === "function") {
+            return true;
+        }
     }
     return false;
 }
@@ -88439,8 +89725,8 @@ var HttpHeaders = /** @class */ (function () {
     /**
      * Set a header in this collection with the provided name and value. The name is
      * case-insensitive.
-     * @param headerName The name of the header to set. This value is case-insensitive.
-     * @param headerValue The value of the header to set.
+     * @param headerName - The name of the header to set. This value is case-insensitive.
+     * @param headerValue - The value of the header to set.
      */
     HttpHeaders.prototype.set = function (headerName, headerValue) {
         this._headersMap[getHeaderKey(headerName)] = {
@@ -88451,7 +89737,7 @@ var HttpHeaders = /** @class */ (function () {
     /**
      * Get the header value for the provided header name, or undefined if no header exists in this
      * collection with the provided name.
-     * @param headerName The name of the header.
+     * @param headerName - The name of the header.
      */
     HttpHeaders.prototype.get = function (headerName) {
         var header = this._headersMap[getHeaderKey(headerName)];
@@ -88466,7 +89752,7 @@ var HttpHeaders = /** @class */ (function () {
     /**
      * Remove the header with the provided headerName. Return whether or not the header existed and
      * was removed.
-     * @param headerName The name of the header to remove.
+     * @param headerName - The name of the header to remove.
      */
     HttpHeaders.prototype.remove = function (headerName) {
         var result = this.contains(headerName);
@@ -88541,14 +89827,14 @@ var HttpHeaders = /** @class */ (function () {
 // Licensed under the MIT license.
 /**
  * Encodes a string in base64 format.
- * @param value the string to encode
+ * @param value - The string to encode
  */
 function encodeString(value) {
     return Buffer.from(value).toString("base64");
 }
 /**
  * Encodes a byte array in base64 format.
- * @param value the Uint8Aray to encode
+ * @param value - The Uint8Aray to encode
  */
 function encodeByteArray(value) {
     // Buffer.from accepts <ArrayBuffer> | <SharedArrayBuffer>-- the TypeScript definition is off here
@@ -88558,7 +89844,7 @@ function encodeByteArray(value) {
 }
 /**
  * Decodes a base64 string into a byte array.
- * @param value the base64 string to decode
+ * @param value - The base64 string to decode
  */
 function decodeString(value) {
     return Buffer.from(value, "base64");
@@ -88569,58 +89855,35 @@ function decodeString(value) {
 var Constants = {
     /**
      * The core-http version
-     * @const
-     * @type {string}
      */
-    coreHttpVersion: "1.2.1",
+    coreHttpVersion: "1.2.3",
     /**
      * Specifies HTTP.
-     *
-     * @const
-     * @type {string}
      */
     HTTP: "http:",
     /**
      * Specifies HTTPS.
-     *
-     * @const
-     * @type {string}
      */
     HTTPS: "https:",
     /**
      * Specifies HTTP Proxy.
-     *
-     * @const
-     * @type {string}
      */
     HTTP_PROXY: "HTTP_PROXY",
     /**
      * Specifies HTTPS Proxy.
-     *
-     * @const
-     * @type {string}
      */
     HTTPS_PROXY: "HTTPS_PROXY",
     /**
      * Specifies NO Proxy.
-     *
-     * @const
-     * @type {string}
      */
     NO_PROXY: "NO_PROXY",
     /**
      * Specifies ALL Proxy.
-     *
-     * @const
-     * @type {string}
      */
     ALL_PROXY: "ALL_PROXY",
     HttpConstants: {
         /**
          * Http Verbs
-         *
-         * @const
-         * @enum {string}
          */
         HttpVerbs: {
             PUT: "PUT",
@@ -88641,9 +89904,6 @@ var Constants = {
     HeaderConstants: {
         /**
          * The Authorization header.
-         *
-         * @const
-         * @type {string}
          */
         AUTHORIZATION: "authorization",
         AUTHORIZATION_SCHEME: "Bearer",
@@ -88651,16 +89911,10 @@ var Constants = {
          * The Retry-After response-header field can be used with a 503 (Service
          * Unavailable) or 349 (Too Many Requests) responses to indicate how long
          * the service is expected to be unavailable to the requesting client.
-         *
-         * @const
-         * @type {string}
          */
         RETRY_AFTER: "Retry-After",
         /**
          * The UserAgent header.
-         *
-         * @const
-         * @type {string}
          */
         USER_AGENT: "User-Agent"
     }
@@ -88689,8 +89943,8 @@ var isNode = typeof process !== "undefined" &&
 /**
  * Encodes an URI.
  *
- * @param {string} uri The URI to be encoded.
- * @return {string} The encoded URI.
+ * @param uri - The URI to be encoded.
+ * @returns The encoded URI.
  */
 function encodeUri(uri) {
     return encodeURIComponent(uri)
@@ -88704,9 +89958,8 @@ function encodeUri(uri) {
  * Returns a stripped version of the Http Response which only contains body,
  * headers and the status.
  *
- * @param {HttpOperationResponse} response The Http Response
- *
- * @return {object} The stripped version of Http Response.
+ * @param response - The Http Response
+ * @returns The stripped version of Http Response.
  */
 function stripResponse(response) {
     var strippedResponse = {};
@@ -88719,9 +89972,8 @@ function stripResponse(response) {
  * Returns a stripped version of the Http Request that does not contain the
  * Authorization header.
  *
- * @param {WebResourceLike} request The Http Request object
- *
- * @return {WebResourceLike} The stripped version of Http Request.
+ * @param request - The Http Request object
+ * @returns The stripped version of Http Request.
  */
 function stripRequest(request) {
     var strippedRequest = request.clone();
@@ -88733,9 +89985,8 @@ function stripRequest(request) {
 /**
  * Validates the given uuid as a string
  *
- * @param {string} uuid The uuid as a string that needs to be validated
- *
- * @return {boolean} True if the uuid is valid; false otherwise.
+ * @param uuid - The uuid as a string that needs to be validated
+ * @returns True if the uuid is valid; false otherwise.
  */
 function isValidUuid(uuid) {
     return validUuidRegex.test(uuid);
@@ -88743,7 +89994,7 @@ function isValidUuid(uuid) {
 /**
  * Generated UUID
  *
- * @return {string} RFC4122 v4 UUID.
+ * @returns RFC4122 v4 UUID.
  */
 function generateUuid() {
     return uuid.v4();
@@ -88752,12 +90003,10 @@ function generateUuid() {
  * Executes an array of promises sequentially. Inspiration of this method is here:
  * https://pouchdb.com/2015/05/18/we-have-a-problem-with-promises.html. An awesome blog on promises!
  *
- * @param {Array} promiseFactories An array of promise factories(A function that return a promise)
- *
- * @param {any} [kickstart] Input to the first promise that is used to kickstart the promise chain.
+ * @param promiseFactories - An array of promise factories(A function that return a promise)
+ * @param kickstart - Input to the first promise that is used to kickstart the promise chain.
  * If not provided then the promise chain starts with undefined.
- *
- * @return A chain of resolved or rejected promises
+ * @returns A chain of resolved or rejected promises
  */
 function executePromisesSequentially(promiseFactories, kickstart) {
     var result = Promise.resolve(kickstart);
@@ -88768,23 +90017,25 @@ function executePromisesSequentially(promiseFactories, kickstart) {
 }
 /**
  * A wrapper for setTimeout that resolves a promise after t milliseconds.
- * @param {number} t The number of milliseconds to be delayed.
- * @param {T} value The value to be resolved with after a timeout of t milliseconds.
- * @returns {Promise<T>} Resolved promise
+ * @param t - The number of milliseconds to be delayed.
+ * @param value - The value to be resolved with after a timeout of t milliseconds.
+ * @returns Resolved promise
  */
 function delay(t, value) {
     return new Promise(function (resolve) { return setTimeout(function () { return resolve(value); }, t); });
 }
 /**
  * Converts a Promise to a callback.
- * @param {Promise<any>} promise The Promise to be converted to a callback
- * @returns {Function} A function that takes the callback (cb: Function): void
+ * @param promise - The Promise to be converted to a callback
+ * @returns A function that takes the callback `(cb: Function) => void`
  * @deprecated generated code should instead depend on responseToBody
  */
+// eslint-disable-next-line @typescript-eslint/ban-types
 function promiseToCallback(promise) {
     if (typeof promise.then !== "function") {
         throw new Error("The provided input is not a Promise.");
     }
+    // eslint-disable-next-line @typescript-eslint/ban-types
     return function (cb) {
         promise
             .then(function (data) {
@@ -88799,8 +90050,8 @@ function promiseToCallback(promise) {
 }
 /**
  * Converts a Promise to a service callback.
- * @param {Promise<HttpOperationResponse>} promise - The Promise of HttpOperationResponse to be converted to a service callback
- * @returns {Function} A function that takes the service callback (cb: ServiceCallback<T>): void
+ * @param promise - The Promise of HttpOperationResponse to be converted to a service callback
+ * @returns A function that takes the service callback (cb: ServiceCallback<T>): void
  */
 function promiseToServiceCallback(promise) {
     if (typeof promise.then !== "function") {
@@ -88830,31 +90081,32 @@ function prepareXMLRootList(obj, elementName, xmlNamespaceKey, xmlNamespace) {
 }
 /**
  * Applies the properties on the prototype of sourceCtors to the prototype of targetCtor
- * @param {object} targetCtor The target object on which the properties need to be applied.
- * @param {Array<object>} sourceCtors An array of source objects from which the properties need to be taken.
+ * @param targetCtor - The target object on which the properties need to be applied.
+ * @param sourceCtors - An array of source objects from which the properties need to be taken.
  */
-function applyMixins(targetCtor, sourceCtors) {
-    sourceCtors.forEach(function (sourceCtors) {
-        Object.getOwnPropertyNames(sourceCtors.prototype).forEach(function (name) {
-            targetCtor.prototype[name] = sourceCtors.prototype[name];
+function applyMixins(targetCtorParam, sourceCtors) {
+    var castTargetCtorParam = targetCtorParam;
+    sourceCtors.forEach(function (sourceCtor) {
+        Object.getOwnPropertyNames(sourceCtor.prototype).forEach(function (name) {
+            castTargetCtorParam.prototype[name] = sourceCtor.prototype[name];
         });
     });
 }
 var validateISODuration = /^(-|\+)?P(?:([-+]?[0-9,.]*)Y)?(?:([-+]?[0-9,.]*)M)?(?:([-+]?[0-9,.]*)W)?(?:([-+]?[0-9,.]*)D)?(?:T(?:([-+]?[0-9,.]*)H)?(?:([-+]?[0-9,.]*)M)?(?:([-+]?[0-9,.]*)S)?)?$/;
 /**
  * Indicates whether the given string is in ISO 8601 format.
- * @param {string} value The value to be validated for ISO 8601 duration format.
- * @return {boolean} `true` if valid, `false` otherwise.
+ * @param value - The value to be validated for ISO 8601 duration format.
+ * @returns `true` if valid, `false` otherwise.
  */
 function isDuration(value) {
     return validateISODuration.test(value);
 }
 /**
  * Replace all of the instances of searchValue in value with the provided replaceValue.
- * @param {string | undefined} value The value to search and replace in.
- * @param {string} searchValue The value to search for in the value argument.
- * @param {string} replaceValue The value to replace searchValue with in the value argument.
- * @returns {string | undefined} The value where each instance of searchValue was replaced with replacedValue.
+ * @param value - The value to search and replace in.
+ * @param searchValue - The value to search for in the value argument.
+ * @param replaceValue - The value to replace searchValue with in the value argument.
+ * @returns The value where each instance of searchValue was replaced with replacedValue.
  */
 function replaceAll(value, searchValue, replaceValue) {
     return !value || !searchValue ? value : value.split(searchValue).join(replaceValue || "");
@@ -88862,8 +90114,8 @@ function replaceAll(value, searchValue, replaceValue) {
 /**
  * Determines whether the given entity is a basic/primitive type
  * (string, number, boolean, null, undefined).
- * @param {any} value Any entity
- * @return {boolean} - true is it is primitive type, false otherwise.
+ * @param value - Any entity
+ * @returns true is it is primitive type, false otherwise.
  */
 function isPrimitiveType(value) {
     return (typeof value !== "object" && typeof value !== "function") || value === null;
@@ -88890,32 +90142,34 @@ var Serializer = /** @class */ (function () {
             throw new Error("\"" + objectName + "\" with value \"" + value + "\" should satisfy the constraint \"" + constraintName + "\": " + constraintValue + ".");
         };
         if (mapper.constraints && value != undefined) {
+            var valueAsNumber = value;
             var _a = mapper.constraints, ExclusiveMaximum = _a.ExclusiveMaximum, ExclusiveMinimum = _a.ExclusiveMinimum, InclusiveMaximum = _a.InclusiveMaximum, InclusiveMinimum = _a.InclusiveMinimum, MaxItems = _a.MaxItems, MaxLength = _a.MaxLength, MinItems = _a.MinItems, MinLength = _a.MinLength, MultipleOf = _a.MultipleOf, Pattern = _a.Pattern, UniqueItems = _a.UniqueItems;
-            if (ExclusiveMaximum != undefined && value >= ExclusiveMaximum) {
+            if (ExclusiveMaximum != undefined && valueAsNumber >= ExclusiveMaximum) {
                 failValidation("ExclusiveMaximum", ExclusiveMaximum);
             }
-            if (ExclusiveMinimum != undefined && value <= ExclusiveMinimum) {
+            if (ExclusiveMinimum != undefined && valueAsNumber <= ExclusiveMinimum) {
                 failValidation("ExclusiveMinimum", ExclusiveMinimum);
             }
-            if (InclusiveMaximum != undefined && value > InclusiveMaximum) {
+            if (InclusiveMaximum != undefined && valueAsNumber > InclusiveMaximum) {
                 failValidation("InclusiveMaximum", InclusiveMaximum);
             }
-            if (InclusiveMinimum != undefined && value < InclusiveMinimum) {
+            if (InclusiveMinimum != undefined && valueAsNumber < InclusiveMinimum) {
                 failValidation("InclusiveMinimum", InclusiveMinimum);
             }
-            if (MaxItems != undefined && value.length > MaxItems) {
+            var valueAsArray = value;
+            if (MaxItems != undefined && valueAsArray.length > MaxItems) {
                 failValidation("MaxItems", MaxItems);
             }
-            if (MaxLength != undefined && value.length > MaxLength) {
+            if (MaxLength != undefined && valueAsArray.length > MaxLength) {
                 failValidation("MaxLength", MaxLength);
             }
-            if (MinItems != undefined && value.length < MinItems) {
+            if (MinItems != undefined && valueAsArray.length < MinItems) {
                 failValidation("MinItems", MinItems);
             }
-            if (MinLength != undefined && value.length < MinLength) {
+            if (MinLength != undefined && valueAsArray.length < MinLength) {
                 failValidation("MinLength", MinLength);
             }
-            if (MultipleOf != undefined && value % MultipleOf !== 0) {
+            if (MultipleOf != undefined && valueAsNumber % MultipleOf !== 0) {
                 failValidation("MultipleOf", MultipleOf);
             }
             if (Pattern) {
@@ -88925,7 +90179,7 @@ var Serializer = /** @class */ (function () {
                 }
             }
             if (UniqueItems &&
-                value.some(function (item, i, ar) { return ar.indexOf(item) !== i; })) {
+                valueAsArray.some(function (item, i, ar) { return ar.indexOf(item) !== i; })) {
                 failValidation("UniqueItems", UniqueItems);
             }
         }
@@ -88933,15 +90187,11 @@ var Serializer = /** @class */ (function () {
     /**
      * Serialize the given object based on its metadata defined in the mapper
      *
-     * @param {Mapper} mapper The mapper which defines the metadata of the serializable object
-     *
-     * @param {object|string|Array|number|boolean|Date|stream} object A valid Javascript object to be serialized
-     *
-     * @param {string} objectName Name of the serialized object
-     *
-     * @param {options} options additional options to deserialization
-     *
-     * @returns {object|string|Array|number|boolean|Date|stream} A valid serialized Javascript object
+     * @param mapper - The mapper which defines the metadata of the serializable object
+     * @param object - A valid Javascript object to be serialized
+     * @param objectName - Name of the serialized object
+     * @param options - additional options to deserialization
+     * @returns A valid serialized Javascript object
      */
     Serializer.prototype.serialize = function (mapper, object, objectName, options) {
         var _a, _b, _c;
@@ -89021,15 +90271,11 @@ var Serializer = /** @class */ (function () {
     /**
      * Deserialize the given object based on its metadata defined in the mapper
      *
-     * @param {object} mapper The mapper which defines the metadata of the serializable object
-     *
-     * @param {object|string|Array|number|boolean|Date|stream} responseBody A valid Javascript entity to be deserialized
-     *
-     * @param {string} objectName Name of the deserialized object
-     *
-     * @param options Controls behavior of XML parser and builder.
-     *
-     * @returns {object|string|Array|number|boolean|Date|stream} A valid deserialized Javascript object
+     * @param mapper - The mapper which defines the metadata of the serializable object
+     * @param responseBody - A valid Javascript entity to be deserialized
+     * @param objectName - Name of the deserialized object
+     * @param options - Controls behavior of XML parser and builder.
+     * @returns A valid deserialized Javascript object
      */
     Serializer.prototype.deserialize = function (mapper, responseBody, objectName, options) {
         var _a, _b, _c;
@@ -89063,13 +90309,15 @@ var Serializer = /** @class */ (function () {
         else {
             if (this.isXML) {
                 var xmlCharKey = updatedOptions.xmlCharKey;
+                var castResponseBody = responseBody;
                 /**
                  * If the mapper specifies this as a non-composite type value but the responseBody contains
                  * both header ("$" i.e., XML_ATTRKEY) and body ("#" i.e., XML_CHARKEY) properties,
                  * then just reduce the responseBody value to the body ("#" i.e., XML_CHARKEY) property.
                  */
-                if (responseBody[XML_ATTRKEY] != undefined && responseBody[xmlCharKey] != undefined) {
-                    responseBody = responseBody[xmlCharKey];
+                if (castResponseBody[XML_ATTRKEY] != undefined &&
+                    castResponseBody[xmlCharKey] != undefined) {
+                    responseBody = castResponseBody[xmlCharKey];
                 }
             }
             if (mapperType.match(/^Number$/i) !== null) {
@@ -89358,9 +90606,9 @@ function serializeDictionaryType(serializer, mapper, object, objectName, isXml, 
 }
 /**
  * Resolves the additionalProperties property from a referenced mapper
- * @param serializer the serializer containing the entire set of mappers
- * @param mapper the composite mapper to resolve
- * @param objectName name of the object being serialized
+ * @param serializer - The serializer containing the entire set of mappers
+ * @param mapper - The composite mapper to resolve
+ * @param objectName - Name of the object being serialized
  */
 function resolveAdditionalProperties(serializer, mapper, objectName) {
     var additionalProperties = mapper.type.additionalProperties;
@@ -89372,9 +90620,9 @@ function resolveAdditionalProperties(serializer, mapper, objectName) {
 }
 /**
  * Finds the mapper referenced by className
- * @param serializer the serializer containing the entire set of mappers
- * @param mapper the composite mapper to resolve
- * @param objectName name of the object being serialized
+ * @param serializer - The serializer containing the entire set of mappers
+ * @param mapper - The composite mapper to resolve
+ * @param objectName - Name of the object being serialized
  */
 function resolveReferencedMapper(serializer, mapper, objectName) {
     var className = mapper.type.className;
@@ -89385,8 +90633,8 @@ function resolveReferencedMapper(serializer, mapper, objectName) {
 }
 /**
  * Resolves a composite mapper's modelProperties.
- * @param serializer the serializer containing the entire set of mappers
- * @param mapper the composite mapper to resolve
+ * @param serializer - The serializer containing the entire set of mappers
+ * @param mapper - The composite mapper to resolve
  */
 function resolveModelProperties(serializer, mapper, objectName) {
     var modelProps = mapper.type.modelProperties;
@@ -89716,6 +90964,7 @@ function getPolymorphicDiscriminatorSafely(serializer, typeName) {
 }
 // TODO: why is this here?
 function serializeObject(toSerialize) {
+    var castToSerialize = toSerialize;
     if (toSerialize == undefined)
         return undefined;
     if (toSerialize instanceof Uint8Array) {
@@ -89735,7 +90984,7 @@ function serializeObject(toSerialize) {
     else if (typeof toSerialize === "object") {
         var dictionary = {};
         for (var property in toSerialize) {
-            dictionary[property] = serializeObject(toSerialize[property]);
+            dictionary[property] = serializeObject(castToSerialize[property]);
         }
         return dictionary;
     }
@@ -89752,6 +91001,7 @@ function strEnum(o) {
     }
     return result;
 }
+// eslint-disable-next-line @typescript-eslint/no-redeclare
 var MapperType = strEnum([
     "Base64Url",
     "Boolean",
@@ -89773,17 +91023,17 @@ var MapperType = strEnum([
 
 // Copyright (c) Microsoft Corporation.
 function isWebResourceLike(object) {
-    if (typeof object !== "object") {
-        return false;
-    }
-    if (typeof object.url === "string" &&
-        typeof object.method === "string" &&
-        typeof object.headers === "object" &&
-        isHttpHeadersLike(object.headers) &&
-        typeof object.validateRequestProperties === "function" &&
-        typeof object.prepare === "function" &&
-        typeof object.clone === "function") {
-        return true;
+    if (object && typeof object === "object") {
+        var castObject = object;
+        if (typeof castObject.url === "string" &&
+            typeof castObject.method === "string" &&
+            typeof castObject.headers === "object" &&
+            isHttpHeadersLike(castObject.headers) &&
+            typeof castObject.validateRequestProperties === "function" &&
+            typeof castObject.prepare === "function" &&
+            typeof castObject.clone === "function") {
+            return true;
+        }
     }
     return false;
 }
@@ -89792,12 +91042,11 @@ function isWebResourceLike(object) {
  *
  * This class provides an abstraction over a REST call by being library / implementation agnostic and wrapping the necessary
  * properties to initiate a request.
- *
- * @constructor
  */
 var WebResource = /** @class */ (function () {
-    function WebResource(url, method, body, query, headers, streamResponseBody, withCredentials, abortSignal, timeout, onUploadProgress, onDownloadProgress, proxySettings, keepAlive, decompressResponse) {
+    function WebResource(url, method, body, query, headers, streamResponseBody, withCredentials, abortSignal, timeout, onUploadProgress, onDownloadProgress, proxySettings, keepAlive, decompressResponse, streamResponseStatusCodes) {
         this.streamResponseBody = streamResponseBody;
+        this.streamResponseStatusCodes = streamResponseStatusCodes;
         this.url = url || "";
         this.method = method || "GET";
         this.headers = isHttpHeadersLike(headers) ? headers : new HttpHeaders(headers);
@@ -89829,8 +91078,8 @@ var WebResource = /** @class */ (function () {
     };
     /**
      * Prepares the request.
-     * @param {RequestPrepareOptions} options Options to provide for preparing the request.
-     * @returns {WebResource} Returns the prepared WebResource (HTTP Request) object that needs to be given to the request pipeline.
+     * @param options - Options to provide for preparing the request.
+     * @returns Returns the prepared WebResource (HTTP Request) object that needs to be given to the request pipeline.
      */
     WebResource.prototype.prepare = function (options) {
         if (!options) {
@@ -90010,10 +91259,10 @@ var WebResource = /** @class */ (function () {
     };
     /**
      * Clone this WebResource HTTP request object.
-     * @returns {WebResource} The clone of this WebResource HTTP request object.
+     * @returns The clone of this WebResource HTTP request object.
      */
     WebResource.prototype.clone = function () {
-        var result = new WebResource(this.url, this.method, this.body, this.query, this.headers && this.headers.clone(), this.streamResponseBody, this.withCredentials, this.abortSignal, this.timeout, this.onUploadProgress, this.onDownloadProgress, this.proxySettings, this.keepAlive, this.decompressResponse);
+        var result = new WebResource(this.url, this.method, this.body, this.query, this.headers && this.headers.clone(), this.streamResponseBody, this.withCredentials, this.abortSignal, this.timeout, this.onUploadProgress, this.onDownloadProgress, this.proxySettings, this.keepAlive, this.decompressResponse, this.streamResponseStatusCodes);
         if (this.formData) {
             result.formData = this.formData;
         }
@@ -90060,9 +91309,12 @@ var URLQuery = /** @class */ (function () {
      * parameterName.
      */
     URLQuery.prototype.set = function (parameterName, parameterValue) {
+        var caseParameterValue = parameterValue;
         if (parameterName) {
-            if (parameterValue !== undefined && parameterValue !== null) {
-                var newValue = Array.isArray(parameterValue) ? parameterValue : parameterValue.toString();
+            if (caseParameterValue !== undefined && caseParameterValue !== null) {
+                var newValue = Array.isArray(caseParameterValue)
+                    ? caseParameterValue
+                    : caseParameterValue.toString();
                 this._rawQuery[parameterName] = newValue;
             }
             else {
@@ -90639,6 +91891,7 @@ var defaultAllowedHeaderNames = [
     "x-ms-correlation-request-id",
     "x-ms-request-id",
     "client-request-id",
+    "ms-cv",
     "return-client-request-id",
     "traceparent",
     "Access-Control-Allow-Credentials",
@@ -90785,6 +92038,9 @@ var RestError = /** @class */ (function (_super) {
 }(Error));
 
 // Copyright (c) Microsoft Corporation.
+var logger = logger$1.createClientLogger("core-http");
+
+// Copyright (c) Microsoft Corporation.
 var ReportTransform = /** @class */ (function (_super) {
     tslib.__extends(ReportTransform, _super);
     function ReportTransform(progressCallback) {
@@ -90805,10 +92061,12 @@ var FetchHttpClient = /** @class */ (function () {
     function FetchHttpClient() {
     }
     FetchHttpClient.prototype.sendRequest = function (httpRequest) {
+        var _a;
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var abortController$1, abortListener, formData, requestForm_1, appendFormValue, _i, _a, formKey, formValue, j, contentType, body, onUploadProgress, uploadReportStream, platformSpecificRequestInit, requestInit, response, headers, operationResponse, _b, _c, onDownloadProgress, responseBody, downloadReportStream, length_1, error_1, fetchError;
-            return tslib.__generator(this, function (_d) {
-                switch (_d.label) {
+            var abortController$1, abortListener, formData, requestForm_1, appendFormValue, _i, _b, formKey, formValue, j, contentType, body, onUploadProgress, uploadReportStream, platformSpecificRequestInit, requestInit, operationResponse, response, headers, streaming, _c, onDownloadProgress, responseBody, downloadReportStream, length_1, error_1, fetchError, uploadStreamDone, downloadStreamDone;
+            var _d;
+            return tslib.__generator(this, function (_e) {
+                switch (_e.label) {
                     case 0:
                         if (!httpRequest && typeof httpRequest !== "object") {
                             throw new Error("'httpRequest' (WebResourceLike) cannot be null or undefined and must be of type object.");
@@ -90847,8 +92105,8 @@ var FetchHttpClient = /** @class */ (function () {
                                     requestForm_1.append(key, value);
                                 }
                             };
-                            for (_i = 0, _a = Object.keys(formData); _i < _a.length; _i++) {
-                                formKey = _a[_i];
+                            for (_i = 0, _b = Object.keys(formData); _i < _b.length; _i++) {
+                                formKey = _b[_i];
                                 formValue = formData[formKey];
                                 if (Array.isArray(formValue)) {
                                     for (j = 0; j < formValue.length; j++) {
@@ -90890,34 +92148,36 @@ var FetchHttpClient = /** @class */ (function () {
                         }
                         return [4 /*yield*/, this.prepareRequest(httpRequest)];
                     case 1:
-                        platformSpecificRequestInit = _d.sent();
+                        platformSpecificRequestInit = _e.sent();
                         requestInit = tslib.__assign({ body: body, headers: httpRequest.headers.rawHeaders(), method: httpRequest.method, signal: abortController$1.signal, redirect: "manual" }, platformSpecificRequestInit);
-                        _d.label = 2;
+                        _e.label = 2;
                     case 2:
-                        _d.trys.push([2, 8, 9, 10]);
+                        _e.trys.push([2, 8, 9, 10]);
                         return [4 /*yield*/, this.fetch(httpRequest.url, requestInit)];
                     case 3:
-                        response = _d.sent();
+                        response = _e.sent();
                         headers = parseHeaders(response.headers);
-                        _b = {
+                        streaming = ((_a = httpRequest.streamResponseStatusCodes) === null || _a === void 0 ? void 0 : _a.has(response.status)) ||
+                            httpRequest.streamResponseBody;
+                        _d = {
                             headers: headers,
                             request: httpRequest,
                             status: response.status,
-                            readableStreamBody: httpRequest.streamResponseBody
+                            readableStreamBody: streaming
                                 ? response.body
                                 : undefined
                         };
-                        if (!!httpRequest.streamResponseBody) return [3 /*break*/, 5];
+                        if (!!streaming) return [3 /*break*/, 5];
                         return [4 /*yield*/, response.text()];
                     case 4:
-                        _c = _d.sent();
+                        _c = _e.sent();
                         return [3 /*break*/, 6];
                     case 5:
                         _c = undefined;
-                        _d.label = 6;
+                        _e.label = 6;
                     case 6:
-                        operationResponse = (_b.bodyAsText = _c,
-                            _b);
+                        operationResponse = (_d.bodyAsText = _c,
+                            _d);
                         onDownloadProgress = httpRequest.onDownloadProgress;
                         if (onDownloadProgress) {
                             responseBody = response.body || undefined;
@@ -90936,10 +92196,10 @@ var FetchHttpClient = /** @class */ (function () {
                         }
                         return [4 /*yield*/, this.processRequest(operationResponse)];
                     case 7:
-                        _d.sent();
+                        _e.sent();
                         return [2 /*return*/, operationResponse];
                     case 8:
-                        error_1 = _d.sent();
+                        error_1 = _e.sent();
                         fetchError = error_1;
                         if (fetchError.code === "ENOTFOUND") {
                             throw new RestError(fetchError.message, RestError.REQUEST_SEND_ERROR, undefined, httpRequest);
@@ -90951,7 +92211,23 @@ var FetchHttpClient = /** @class */ (function () {
                     case 9:
                         // clean up event listener
                         if (httpRequest.abortSignal && abortListener) {
-                            httpRequest.abortSignal.removeEventListener("abort", abortListener);
+                            uploadStreamDone = Promise.resolve();
+                            if (isReadableStream(body)) {
+                                uploadStreamDone = isStreamComplete(body);
+                            }
+                            downloadStreamDone = Promise.resolve();
+                            if (isReadableStream(operationResponse === null || operationResponse === void 0 ? void 0 : operationResponse.readableStreamBody)) {
+                                downloadStreamDone = isStreamComplete(operationResponse.readableStreamBody);
+                            }
+                            Promise.all([uploadStreamDone, downloadStreamDone])
+                                .then(function () {
+                                var _a;
+                                (_a = httpRequest.abortSignal) === null || _a === void 0 ? void 0 : _a.removeEventListener("abort", abortListener);
+                                return;
+                            })
+                                .catch(function (e) {
+                                logger.warning("Error when cleaning up abortListener on httpRequest", e);
+                            });
                         }
                         return [7 /*endfinally*/];
                     case 10: return [2 /*return*/];
@@ -90963,6 +92239,13 @@ var FetchHttpClient = /** @class */ (function () {
 }());
 function isReadableStream(body) {
     return body && typeof body.pipe === "function";
+}
+function isStreamComplete(stream) {
+    return new Promise(function (resolve) {
+        stream.on("close", resolve);
+        stream.on("end", resolve);
+        stream.on("error", resolve);
+    });
 }
 function parseHeaders(headers) {
     var httpHeaders = new HttpHeaders();
@@ -91170,7 +92453,7 @@ var NodeFetchHttpClient = /** @class */ (function (_super) {
 /**
  * Converts an OperationOptions to a RequestOptionsBase
  *
- * @param opts OperationOptions object to convert to RequestOptionsBase
+ * @param opts - OperationOptions object to convert to RequestOptionsBase
  */
 function operationOptionsToRequestOptionsBase(opts) {
     var requestOptions = opts.requestOptions, tracingOptions = opts.tracingOptions, additionalOptions = tslib.__rest(opts, ["requestOptions", "tracingOptions"]);
@@ -91192,7 +92475,7 @@ var BaseRequestPolicy = /** @class */ (function () {
     }
     /**
      * Get whether or not a log with the provided log level should be logged.
-     * @param logLevel The log level of the log that will be logged.
+     * @param logLevel - The log level of the log that will be logged.
      * @returns Whether or not a log with the provided log level should be logged.
      */
     BaseRequestPolicy.prototype.shouldLog = function (logLevel) {
@@ -91201,8 +92484,8 @@ var BaseRequestPolicy = /** @class */ (function () {
     /**
      * Attempt to log the provided message to the provided logger. If no logger was provided or if
      * the log level does not meat the logger's threshold, then nothing will be logged.
-     * @param logLevel The log level of this log.
-     * @param message The message of this log.
+     * @param logLevel - The log level of this log.
+     * @param message - The message of this log.
      */
     BaseRequestPolicy.prototype.log = function (logLevel, message) {
         this._options.log(logLevel, message);
@@ -91218,7 +92501,7 @@ var RequestPolicyOptions = /** @class */ (function () {
     }
     /**
      * Get whether or not a log with the provided log level should be logged.
-     * @param logLevel The log level of the log that will be logged.
+     * @param logLevel - The log level of the log that will be logged.
      * @returns Whether or not a log with the provided log level should be logged.
      */
     RequestPolicyOptions.prototype.shouldLog = function (logLevel) {
@@ -91229,8 +92512,8 @@ var RequestPolicyOptions = /** @class */ (function () {
     /**
      * Attempt to log the provided message to the provided logger. If no logger was provided or if
      * the log level does not meet the logger's threshold, then nothing will be logged.
-     * @param logLevel The log level of this log.
-     * @param message The message of this log.
+     * @param logLevel - The log level of this log.
+     * @param message - The message of this log.
      */
     RequestPolicyOptions.prototype.log = function (logLevel, message) {
         if (this._logger && this.shouldLog(logLevel)) {
@@ -91239,9 +92522,6 @@ var RequestPolicyOptions = /** @class */ (function () {
     };
     return RequestPolicyOptions;
 }());
-
-// Copyright (c) Microsoft Corporation.
-var logger = logger$1.createClientLogger("core-http");
 
 // Copyright (c) Microsoft Corporation.
 function logPolicy(loggingOptions) {
@@ -91327,7 +92607,7 @@ var LogPolicy = /** @class */ (function (_super) {
 // Licensed under the MIT license.
 /**
  * Get the path to this parameter's value as a dotted string (a.b.c).
- * @param parameter The parameter to get the path string for.
+ * @param parameter - The parameter to get the path string for.
  * @returns The path to this parameter's value as a dotted string.
  */
 function getPathStringFromParameter(parameter) {
@@ -91348,14 +92628,17 @@ function getPathStringFromParameterPath(parameterPath, mapper) {
 }
 
 // Copyright (c) Microsoft Corporation.
-function isStreamOperation(operationSpec) {
-    var result = false;
+/**
+ * Gets the list of status codes for streaming responses.
+ * @internal @hidden
+ */
+function getStreamResponseStatusCodes(operationSpec) {
+    var result = new Set();
     for (var statusCode in operationSpec.responses) {
         var operationResponse = operationSpec.responses[statusCode];
         if (operationResponse.bodyMapper &&
             operationResponse.bodyMapper.type.name === MapperType.Stream) {
-            result = true;
-            break;
+            result.add(Number(statusCode));
         }
     }
     return result;
@@ -91417,9 +92700,8 @@ xml2jsBuilderSettings.renderOpts = {
 };
 /**
  * Converts given JSON object to XML string
- * @param obj JSON object to be converted into XML string
- * @param opts Options that govern the parsing of given JSON object
- * `rootName` indicates the name of the root element in the resulting XML
+ * @param obj - JSON object to be converted into XML string
+ * @param opts - Options that govern the parsing of given JSON object
  */
 function stringifyXML(obj, opts) {
     var _a;
@@ -91431,9 +92713,8 @@ function stringifyXML(obj, opts) {
 }
 /**
  * Converts given XML string into JSON
- * @param str String containing the XML content to be parsed into JSON
- * @param opts Options that govern the parsing of given xml string
- * `includeRoot` indicates whether the root element is to be included or not in the output
+ * @param str - String containing the XML content to be parsed into JSON
+ * @param opts - Options that govern the parsing of given xml string
  */
 function parseXML(str, opts) {
     var _a;
@@ -91576,8 +92857,8 @@ function deserializeResponseBody(jsonContentTypes, xmlContentTypes, response, op
                 try {
                     parsedResponse.parsedBody = operationSpec.serializer.deserialize(responseSpec.bodyMapper, valueToDeserialize, "operationRes.parsedBody", options);
                 }
-                catch (error) {
-                    var restError = new RestError("Error " + error + " occurred in deserializing the responseBody - " + parsedResponse.bodyAsText, undefined, parsedResponse.status, parsedResponse.request, parsedResponse);
+                catch (innerError) {
+                    var restError = new RestError("Error " + innerError + " occurred in deserializing the responseBody - " + parsedResponse.bodyAsText, undefined, parsedResponse.status, parsedResponse.request, parsedResponse);
                     throw restError;
                 }
             }
@@ -91598,6 +92879,7 @@ function isOperationSpecEmpty(operationSpec) {
         (expectedStatusCodes.length === 1 && expectedStatusCodes[0] === "default"));
 }
 function handleErrorResponse(parsedResponse, operationSpec, responseSpec) {
+    var _a;
     var isSuccessByStatus = 200 <= parsedResponse.status && parsedResponse.status < 300;
     var isExpectedStatusCode = isOperationSpecEmpty(operationSpec)
         ? isSuccessByStatus
@@ -91613,7 +92895,9 @@ function handleErrorResponse(parsedResponse, operationSpec, responseSpec) {
         }
     }
     var errorResponseSpec = responseSpec !== null && responseSpec !== void 0 ? responseSpec : operationSpec.responses.default;
-    var initialErrorMessage = isStreamOperation(operationSpec)
+    var streaming = ((_a = parsedResponse.request.streamResponseStatusCodes) === null || _a === void 0 ? void 0 : _a.has(parsedResponse.status)) ||
+        parsedResponse.request.streamResponseBody;
+    var initialErrorMessage = streaming
         ? "Unexpected status code: " + parsedResponse.status
         : parsedResponse.bodyAsText;
     var error = new RestError(initialErrorMessage, undefined, parsedResponse.status, parsedResponse.request, parsedResponse);
@@ -91658,13 +92942,16 @@ function handleErrorResponse(parsedResponse, operationSpec, responseSpec) {
     return { error: error, shouldReturnResponse: false };
 }
 function parse(jsonContentTypes, xmlContentTypes, operationResponse, opts) {
+    var _a;
     var errorHandler = function (err) {
         var msg = "Error \"" + err + "\" occurred while parsing the response body - " + operationResponse.bodyAsText + ".";
         var errCode = err.code || RestError.PARSE_ERROR;
         var e = new RestError(msg, errCode, operationResponse.status, operationResponse.request, operationResponse);
         return Promise.reject(e);
     };
-    if (!operationResponse.request.streamResponseBody && operationResponse.bodyAsText) {
+    var streaming = ((_a = operationResponse.request.streamResponseStatusCodes) === null || _a === void 0 ? void 0 : _a.has(operationResponse.status)) ||
+        operationResponse.request.streamResponseBody;
+    if (!streaming && operationResponse.bodyAsText) {
         var text_1 = operationResponse.bodyAsText;
         var contentType = operationResponse.headers.get("Content-Type") || "";
         var contentComponents = !contentType
@@ -91703,10 +92990,10 @@ function isNumber(n) {
  * @internal
  * Determines if the operation should be retried.
  *
- * @param {number} retryLimit Specifies the max number of retries.
- * @param {(response?: HttpOperationResponse, error?: RetryError) => boolean} predicate Initial chekck on whether to retry based on given responses or errors
- * @param {RetryData} retryData  The retry data.
- * @return {boolean} True if the operation qualifies for a retry; false otherwise.
+ * @param retryLimit - Specifies the max number of retries.
+ * @param predicate - Initial chekck on whether to retry based on given responses or errors
+ * @param retryData -  The retry data.
+ * @returns True if the operation qualifies for a retry; false otherwise.
  */
 function shouldRetry(retryLimit, predicate, retryData, response, error) {
     if (!predicate(response, error)) {
@@ -91718,9 +93005,9 @@ function shouldRetry(retryLimit, predicate, retryData, response, error) {
  * @internal
  * Updates the retry data for the next attempt.
  *
- * @param {RetryPolicyOptions} retryOptions specifies retry interval, and its lower bound and upper bound.
- * @param {RetryData} [retryData]  The retry data.
- * @param {RetryError} [err] The operation"s error, if any.
+ * @param retryOptions - specifies retry interval, and its lower bound and upper bound.
+ * @param retryData -  The retry data.
+ * @param err - The operation"s error, if any.
  */
 function updateRetryData(retryOptions, retryData, err) {
     if (retryData === void 0) { retryData = { retryCount: 0, retryInterval: 0 }; }
@@ -91758,19 +93045,17 @@ var DefaultRetryOptions = {
     maxRetryDelayInMs: DEFAULT_CLIENT_MAX_RETRY_INTERVAL
 };
 /**
- * @class
  * Instantiates a new "ExponentialRetryPolicyFilter" instance.
  */
 var ExponentialRetryPolicy = /** @class */ (function (_super) {
     tslib.__extends(ExponentialRetryPolicy, _super);
     /**
-     * @constructor
-     * @param {RequestPolicy} nextPolicy The next RequestPolicy in the pipeline chain.
-     * @param {RequestPolicyOptions} options The options for this RequestPolicy.
-     * @param {number} [retryCount]        The client retry count.
-     * @param {number} [retryInterval]     The client retry interval, in milliseconds.
-     * @param {number} [minRetryInterval]  The minimum retry interval, in milliseconds.
-     * @param {number} [maxRetryInterval]  The maximum retry interval, in milliseconds.
+     * @param nextPolicy - The next RequestPolicy in the pipeline chain.
+     * @param options - The options for this RequestPolicy.
+     * @param retryCount - The client retry count.
+     * @param retryInterval - The client retry interval, in milliseconds.
+     * @param minRetryInterval - The minimum retry interval, in milliseconds.
+     * @param maxRetryInterval - The maximum retry interval, in milliseconds.
      */
     function ExponentialRetryPolicy(nextPolicy, options, retryCount, retryInterval, maxRetryInterval) {
         var _this = _super.call(this, nextPolicy, options) || this;
@@ -91792,8 +93077,8 @@ var ExponentialRetryPolicy = /** @class */ (function (_super) {
 }(BaseRequestPolicy));
 function retry(policy, request, response, retryData, requestError) {
     return tslib.__awaiter(this, void 0, void 0, function () {
-        function shouldPolicyRetry(response) {
-            var statusCode = response === null || response === void 0 ? void 0 : response.status;
+        function shouldPolicyRetry(responseParam) {
+            var statusCode = responseParam === null || responseParam === void 0 ? void 0 : responseParam.status;
             if (statusCode === undefined ||
                 (statusCode < 500 && statusCode !== 408) ||
                 statusCode === 501 ||
@@ -92056,9 +93341,9 @@ function registerIfNeeded(policy, request, response) {
 }
 /**
  * Reuses the headers of the original request and url (if specified).
- * @param {WebResourceLike} originalRequest The original request
- * @param {boolean} reuseUrlToo Should the url from the original request be reused as well. Default false.
- * @returns {object} A new request object with desired headers.
+ * @param originalRequest - The original request
+ * @param reuseUrlToo - Should the url from the original request be reused as well. Default false.
+ * @returns A new request object with desired headers.
  */
 function getRequestEssentials(originalRequest, reuseUrlToo) {
     if (reuseUrlToo === void 0) { reuseUrlToo = false; }
@@ -92076,8 +93361,8 @@ function getRequestEssentials(originalRequest, reuseUrlToo) {
 /**
  * Validates the error code and message associated with 409 response status code. If it matches to that of
  * RP not registered then it returns the name of the RP else returns undefined.
- * @param {string} body The response body received after making the original request.
- * @returns {string} The name of the RP if condition is satisfied else undefined.
+ * @param body - The response body received after making the original request.
+ * @returns The name of the RP if condition is satisfied else undefined.
  */
 function checkRPNotRegisteredError(body) {
     var result, responseBody;
@@ -92104,8 +93389,8 @@ function checkRPNotRegisteredError(body) {
 /**
  * Extracts the first part of the URL, just after subscription:
  * https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/
- * @param {string} url The original request url
- * @returns {string} The url prefix as explained above.
+ * @param url - The original request url
+ * @returns The url prefix as explained above.
  */
 function extractSubscriptionUrl(url) {
     var result;
@@ -92120,12 +93405,12 @@ function extractSubscriptionUrl(url) {
 }
 /**
  * Registers the given provider.
- * @param {RPRegistrationPolicy} policy The RPRegistrationPolicy this function is being called against.
- * @param {string} urlPrefix https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/
- * @param {string} provider The provider name to be registered.
- * @param {WebResourceLike} originalRequest The original request sent by the user that returned a 409 response
+ * @param policy - The RPRegistrationPolicy this function is being called against.
+ * @param urlPrefix - https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/
+ * @param provider - The provider name to be registered.
+ * @param originalRequest - The original request sent by the user that returned a 409 response
  * with a message that the provider is not registered.
- * @param {registrationCallback} callback The callback that handles the RP registration
+ * @param callback - The callback that handles the RP registration
  */
 function registerRP(policy, urlPrefix, provider, originalRequest) {
     var postUrl = urlPrefix + "providers/" + provider + "/register?api-version=2016-02-01";
@@ -92143,11 +93428,11 @@ function registerRP(policy, urlPrefix, provider, originalRequest) {
 /**
  * Polls the registration status of the provider that was registered. Polling happens at an interval of 30 seconds.
  * Polling will happen till the registrationState property of the response body is "Registered".
- * @param {RPRegistrationPolicy} policy The RPRegistrationPolicy this function is being called against.
- * @param {string} url The request url for polling
- * @param {WebResourceLike} originalRequest The original request sent by the user that returned a 409 response
+ * @param policy - The RPRegistrationPolicy this function is being called against.
+ * @param url - The request url for polling
+ * @param originalRequest - The original request sent by the user that returned a 409 response
  * with a message that the provider is not registered.
- * @returns {Promise<boolean>} True if RP Registration is successful.
+ * @returns True if RP Registration is successful.
  */
 function getRegistrationStatus(policy, url, originalRequest) {
     var reqOptions = getRequestEssentials(originalRequest);
@@ -92214,8 +93499,6 @@ var AccessTokenRefresher = /** @class */ (function () {
     /**
      * Returns true if the required milliseconds(defaulted to 30000) have been passed signifying
      * that we are ready for a new refresh.
-     *
-     * @returns {boolean}
      */
     AccessTokenRefresher.prototype.isReady = function () {
         // We're only ready for a new refresh if the required milliseconds have passed.
@@ -92226,7 +93509,6 @@ var AccessTokenRefresher = /** @class */ (function () {
      * then requests a new token,
      * then sets this.promise to undefined,
      * then returns the token.
-     * @param options getToken options
      */
     AccessTokenRefresher.prototype.getToken = function (options) {
         return tslib.__awaiter(this, void 0, void 0, function () {
@@ -92247,7 +93529,6 @@ var AccessTokenRefresher = /** @class */ (function () {
     /**
      * Requests a new token if we're not currently waiting for a new token.
      * Returns null if the required time between each call hasn't been reached.
-     * @param options getToken options
      */
     AccessTokenRefresher.prototype.refresh = function (options) {
         if (!this.promise) {
@@ -92268,8 +93549,8 @@ var timeBetweenRefreshAttemptsInMs = 30000;
 /**
  * Creates a new BearerTokenAuthenticationPolicy factory.
  *
- * @param credential The TokenCredential implementation that can supply the bearer token.
- * @param scopes The scopes for which the bearer token applies.
+ * @param credential - The TokenCredential implementation that can supply the bearer token.
+ * @param scopes - The scopes for which the bearer token applies.
  */
 function bearerTokenAuthenticationPolicy(credential, scopes) {
     var tokenCache = new ExpiringAccessTokenCache();
@@ -92292,11 +93573,11 @@ var BearerTokenAuthenticationPolicy = /** @class */ (function (_super) {
     /**
      * Creates a new BearerTokenAuthenticationPolicy object.
      *
-     * @param nextPolicy The next RequestPolicy in the request pipeline.
-     * @param options Options for this RequestPolicy.
-     * @param credential The TokenCredential implementation that can supply the bearer token.
-     * @param scopes The scopes for which the bearer token applies.
-     * @param tokenCache The cache for the most recent AccessToken returned from the TokenCredential.
+     * @param nextPolicy - The next RequestPolicy in the request pipeline.
+     * @param options - Options for this RequestPolicy.
+     * @param credential - The TokenCredential implementation that can supply the bearer token.
+     * @param scopes - The scopes for which the bearer token applies.
+     * @param tokenCache - The cache for the most recent AccessToken returned from the TokenCredential.
      */
     function BearerTokenAuthenticationPolicy(nextPolicy, options, tokenCache, tokenRefresher) {
         var _this = _super.call(this, nextPolicy, options) || this;
@@ -92306,7 +93587,6 @@ var BearerTokenAuthenticationPolicy = /** @class */ (function (_super) {
     }
     /**
      * Applies the Bearer token to the request through the Authorization header.
-     * @param webResource
      */
     BearerTokenAuthenticationPolicy.prototype.sendRequest = function (webResource) {
         return tslib.__awaiter(this, void 0, void 0, function () {
@@ -92388,14 +93668,10 @@ function systemErrorRetryPolicy(retryCount, retryInterval, minRetryInterval, max
     };
 }
 /**
- * @class
- * Instantiates a new "ExponentialRetryPolicyFilter" instance.
- *
- * @constructor
- * @param {number} retryCount        The client retry count.
- * @param {number} retryInterval     The client retry interval, in milliseconds.
- * @param {number} minRetryInterval  The minimum retry interval, in milliseconds.
- * @param {number} maxRetryInterval  The maximum retry interval, in milliseconds.
+ * @param retryCount - The client retry count.
+ * @param retryInterval - The client retry interval, in milliseconds.
+ * @param minRetryInterval - The minimum retry interval, in milliseconds.
+ * @param maxRetryInterval - The maximum retry interval, in milliseconds.
  */
 var SystemErrorRetryPolicy = /** @class */ (function (_super) {
     tslib.__extends(SystemErrorRetryPolicy, _super);
@@ -92433,7 +93709,7 @@ function retry$1(policy, request, operationResponse, err, retryData) {
             }
             return false;
         }
-        var err_1;
+        var nestedErr_1;
         return tslib.__generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -92447,8 +93723,8 @@ function retry$1(policy, request, operationResponse, err, retryData) {
                     _a.sent();
                     return [2 /*return*/, policy._nextPolicy.sendRequest(request.clone())];
                 case 3:
-                    err_1 = _a.sent();
-                    return [2 /*return*/, retry$1(policy, request, operationResponse, err_1, retryData)];
+                    nestedErr_1 = _a.sent();
+                    return [2 /*return*/, retry$1(policy, request, operationResponse, nestedErr_1, retryData)];
                 case 4: return [3 /*break*/, 6];
                 case 5:
                     if (err) {
@@ -92472,8 +93748,10 @@ function retry$1(policy, request, operationResponse, err, retryData) {
 })(exports.QueryCollectionFormat || (exports.QueryCollectionFormat = {}));
 
 // Copyright (c) Microsoft Corporation.
-var noProxyList = [];
-var isNoProxyInitalized = false;
+/**
+ * @internal
+ */
+var noProxyList = loadNoProxy();
 var byPassedList = new Map();
 function loadEnvironmentProxyValue() {
     if (!process) {
@@ -92484,45 +93762,53 @@ function loadEnvironmentProxyValue() {
     var httpProxy = getEnvironmentValue(Constants.HTTP_PROXY);
     return httpsProxy || allProxy || httpProxy;
 }
-// Check whether the given `uri` matches the noProxyList. If it matches, any request sent to that same `uri` won't set the proxy settings.
+// Check whether the host of a given `uri` is in the noProxyList.
+// If there's a match, any request sent to the same host won't have the proxy settings set.
+// This implementation is a port of https://github.com/Azure/azure-sdk-for-net/blob/8cca811371159e527159c7eb65602477898683e2/sdk/core/Azure.Core/src/Pipeline/Internal/HttpEnvironmentProxy.cs#L210
 function isBypassed(uri) {
-    if (byPassedList.has(uri)) {
-        return byPassedList.get(uri);
+    if (noProxyList.length === 0) {
+        return false;
     }
-    loadNoProxy();
-    var isBypassed = false;
     var host = URLBuilder.parse(uri).getHost();
+    if (byPassedList.has(host)) {
+        return byPassedList.get(host);
+    }
+    var isBypassedFlag = false;
     for (var _i = 0, noProxyList_1 = noProxyList; _i < noProxyList_1.length; _i++) {
-        var proxyString = noProxyList_1[_i];
-        if (proxyString[0] === ".") {
-            if (uri.endsWith(proxyString)) {
-                isBypassed = true;
+        var pattern = noProxyList_1[_i];
+        if (pattern[0] === ".") {
+            // This should match either domain it self or any subdomain or host
+            // .foo.com will match foo.com it self or *.foo.com
+            if (host.endsWith(pattern)) {
+                isBypassedFlag = true;
             }
             else {
-                if (host === proxyString.slice(1) && host.length === proxyString.length - 1) {
-                    isBypassed = true;
+                if (host.length === pattern.length - 1 && host === pattern.slice(1)) {
+                    isBypassedFlag = true;
                 }
             }
         }
         else {
-            if (host === proxyString) {
-                isBypassed = true;
+            if (host === pattern) {
+                isBypassedFlag = true;
             }
         }
     }
-    byPassedList.set(uri, isBypassed);
-    return isBypassed;
+    byPassedList.set(host, isBypassedFlag);
+    return isBypassedFlag;
 }
+/**
+ * @internal
+ */
 function loadNoProxy() {
-    if (isNoProxyInitalized) {
-        return;
-    }
     var noProxy = getEnvironmentValue(Constants.NO_PROXY);
     if (noProxy) {
-        var list = noProxy.split(",");
-        noProxyList = list.map(function (item) { return item.trim(); }).filter(function (item) { return item.length; });
+        return noProxy
+            .split(",")
+            .map(function (item) { return item.trim(); })
+            .filter(function (item) { return item.length; });
     }
-    isNoProxyInitalized = true;
+    return [];
 }
 function getDefaultProxySettings(proxyUrl) {
     if (!proxyUrl) {
@@ -92708,9 +93994,9 @@ var KeepAlivePolicy = /** @class */ (function (_super) {
     /**
      * Creates an instance of KeepAlivePolicy.
      *
-     * @param {RequestPolicy} nextPolicy
-     * @param {RequestPolicyOptions} options
-     * @param {KeepAliveOptions} [keepAliveOptions]
+     * @param nextPolicy -
+     * @param options -
+     * @param keepAliveOptions -
      */
     function KeepAlivePolicy(nextPolicy, options, keepAliveOptions) {
         var _this = _super.call(this, nextPolicy, options) || this;
@@ -92720,9 +94006,8 @@ var KeepAlivePolicy = /** @class */ (function (_super) {
     /**
      * Sends out request.
      *
-     * @param {WebResourceLike} request
-     * @returns {Promise<HttpOperationResponse>}
-     * @memberof KeepAlivePolicy
+     * @param request -
+     * @returns
      */
     KeepAlivePolicy.prototype.sendRequest = function (request) {
         return tslib.__awaiter(this, void 0, void 0, function () {
@@ -92828,8 +94113,8 @@ var DisableResponseDecompressionPolicy = /** @class */ (function (_super) {
     /**
      * Creates an instance of DisableResponseDecompressionPolicy.
      *
-     * @param {RequestPolicy} nextPolicy
-     * @param {RequestPolicyOptions} options
+     * @param nextPolicy -
+     * @param options -
      */
     // The parent constructor is protected.
     /* eslint-disable-next-line @typescript-eslint/no-useless-constructor */
@@ -92839,8 +94124,8 @@ var DisableResponseDecompressionPolicy = /** @class */ (function (_super) {
     /**
      * Sends out request.
      *
-     * @param {WebResource} request
-     * @returns {Promise<HttpOperationResponse>}
+     * @param request -
+     * @returns
      */
     DisableResponseDecompressionPolicy.prototype.sendRequest = function (request) {
         return tslib.__awaiter(this, void 0, void 0, function () {
@@ -92868,17 +94153,12 @@ var NdJsonPolicy = /** @class */ (function (_super) {
     tslib.__extends(NdJsonPolicy, _super);
     /**
      * Creates an instance of KeepAlivePolicy.
-     *
-     * @param nextPolicy
-     * @param options
      */
     function NdJsonPolicy(nextPolicy, options) {
         return _super.call(this, nextPolicy, options) || this;
     }
     /**
      * Sends a request.
-     *
-     * @param request
      */
     NdJsonPolicy.prototype.sendRequest = function (request) {
         return tslib.__awaiter(this, void 0, void 0, function () {
@@ -92899,16 +94179,23 @@ var NdJsonPolicy = /** @class */ (function (_super) {
 }(BaseRequestPolicy));
 
 // Copyright (c) Microsoft Corporation.
+var cachedHttpClient;
+function getCachedDefaultHttpClient() {
+    if (!cachedHttpClient) {
+        cachedHttpClient = new NodeFetchHttpClient();
+    }
+    return cachedHttpClient;
+}
+
+// Copyright (c) Microsoft Corporation.
 /**
- * @class
- * Initializes a new instance of the ServiceClient.
+ * ServiceClient sends service requests and receives responses.
  */
 var ServiceClient = /** @class */ (function () {
     /**
      * The ServiceClient constructor
-     * @constructor
-     * @param credentials The credentials used for authentication with the service.
-     * @param options The service client options that govern the behavior of the client.
+     * @param credentials - The credentials used for authentication with the service.
+     * @param options - The service client options that govern the behavior of the client.
      */
     function ServiceClient(credentials, 
     /* eslint-disable-next-line @azure/azure-sdk/ts-naming-options */
@@ -92918,7 +94205,7 @@ var ServiceClient = /** @class */ (function () {
             options = {};
         }
         this._withCredentials = options.withCredentials || false;
-        this._httpClient = options.httpClient || new NodeFetchHttpClient();
+        this._httpClient = options.httpClient || getCachedDefaultHttpClient();
         this._requestPolicyOptions = new RequestPolicyOptions(options.httpPipelineLogger);
         var requestPolicyFactories;
         if (Array.isArray(options.requestPolicyFactories)) {
@@ -92941,7 +94228,7 @@ var ServiceClient = /** @class */ (function () {
                     var serviceClient = _this;
                     var serviceClientOptions = options;
                     return {
-                        create: function (nextPolicy, options) {
+                        create: function (nextPolicy, createOptions) {
                             var credentialScopes = getCredentialScopes(serviceClientOptions, serviceClient.baseUri);
                             if (!credentialScopes) {
                                 throw new Error("When using credential, the ServiceClient must contain a baseUri or a credentialScopes in ServiceClientOptions. Unable to create a bearerTokenAuthenticationPolicy");
@@ -92949,7 +94236,7 @@ var ServiceClient = /** @class */ (function () {
                             if (bearerTokenPolicyFactory === undefined || bearerTokenPolicyFactory === null) {
                                 bearerTokenPolicyFactory = bearerTokenAuthenticationPolicy(credentials, credentialScopes);
                             }
-                            return bearerTokenPolicyFactory.create(nextPolicy, options);
+                            return bearerTokenPolicyFactory.create(nextPolicy, createOptions);
                         }
                     };
                 };
@@ -93006,9 +94293,9 @@ var ServiceClient = /** @class */ (function () {
     };
     /**
      * Send an HTTP request that is populated using the provided OperationSpec.
-     * @param {OperationArguments} operationArguments The arguments that the HTTP request's templated values will be populated from.
-     * @param {OperationSpec} operationSpec The OperationSpec to use to populate the httpRequest.
-     * @param {ServiceCallback} callback The callback to call when the response is received.
+     * @param operationArguments - The arguments that the HTTP request's templated values will be populated from.
+     * @param operationSpec - The OperationSpec to use to populate the httpRequest.
+     * @param callback - The callback to call when the response is received.
      */
     ServiceClient.prototype.sendOperationRequest = function (operationArguments, operationSpec, callback) {
         var _a;
@@ -93099,7 +94386,7 @@ var ServiceClient = /** @class */ (function () {
                         }
                         httpRequest.url = requestUrl.toString();
                         contentType = operationSpec.contentType || this.requestContentType;
-                        if (contentType) {
+                        if (contentType && operationSpec.requestBody) {
                             httpRequest.headers.set("Content-Type", contentType);
                         }
                         if (operationSpec.headerParameters) {
@@ -93151,8 +94438,8 @@ var ServiceClient = /** @class */ (function () {
                         }
                         httpRequest.withCredentials = this._withCredentials;
                         serializeRequestBody(this, httpRequest, operationArguments, operationSpec);
-                        if (httpRequest.streamResponseBody === undefined || httpRequest.streamResponseBody === null) {
-                            httpRequest.streamResponseBody = isStreamOperation(operationSpec);
+                        if (httpRequest.streamResponseStatusCodes === undefined) {
+                            httpRequest.streamResponseStatusCodes = getStreamResponseStatusCodes(operationSpec);
                         }
                         rawResponse = void 0;
                         sendRequestError = void 0;
@@ -93187,7 +94474,6 @@ var ServiceClient = /** @class */ (function () {
                         cb = callback;
                         if (cb) {
                             result
-                                // tslint:disable-next-line:no-null-keyword
                                 .then(function (res) { return cb(null, res._response.parsedBody, res._response.request, res._response); })
                                 .catch(function (err) { return cb(err); });
                         }
@@ -93489,9 +94775,9 @@ function getCredentialScopes(options, baseUri) {
 // Copyright (c) Microsoft Corporation.
 /**
  * Creates a function called createSpan to create spans using the global tracer.
- * @ignore
- * @param spanConfig The name of the operation being performed.
- * @param tracingOptions The options for the underlying http request.
+ * @hidden
+ * @param spanConfig - The name of the operation being performed.
+ * @param tracingOptions - The options for the underlying http request.
  */
 function createSpanFunction(_a) {
     var packagePrefix = _a.packagePrefix, namespace = _a.namespace;
@@ -93521,10 +94807,9 @@ var BasicAuthenticationCredentials = /** @class */ (function () {
     /**
      * Creates a new BasicAuthenticationCredentials object.
      *
-     * @constructor
-     * @param {string} userName User name.
-     * @param {string} password Password.
-     * @param {string} [authorizationScheme] The authorization scheme.
+     * @param userName - User name.
+     * @param password - Password.
+     * @param authorizationScheme - The authorization scheme.
      */
     function BasicAuthenticationCredentials(userName, password, authorizationScheme) {
         if (authorizationScheme === void 0) { authorizationScheme = DEFAULT_AUTHORIZATION_SCHEME; }
@@ -93542,8 +94827,8 @@ var BasicAuthenticationCredentials = /** @class */ (function () {
     /**
      * Signs a request with the Authentication header.
      *
-     * @param {WebResourceLike} webResource The WebResourceLike to be signed.
-     * @returns {Promise<WebResourceLike>} The signed request object.
+     * @param webResource - The WebResourceLike to be signed.
+     * @returns The signed request object.
      */
     BasicAuthenticationCredentials.prototype.signRequest = function (webResource) {
         var credentials = this.userName + ":" + this.password;
@@ -93562,8 +94847,7 @@ var BasicAuthenticationCredentials = /** @class */ (function () {
  */
 var ApiKeyCredentials = /** @class */ (function () {
     /**
-     * @constructor
-     * @param {object} options   Specifies the options to be provided for auth. Either header or query needs to be provided.
+     * @param options - Specifies the options to be provided for auth. Either header or query needs to be provided.
      */
     function ApiKeyCredentials(options) {
         if (!options || (options && !options.inHeader && !options.inQuery)) {
@@ -93575,8 +94859,8 @@ var ApiKeyCredentials = /** @class */ (function () {
     /**
      * Signs a request with the values provided in the inHeader and inQuery parameter.
      *
-     * @param {WebResourceLike} webResource The WebResourceLike to be signed.
-     * @returns {Promise<WebResourceLike>} The signed request object.
+     * @param webResource - The WebResourceLike to be signed.
+     * @returns The signed request object.
      */
     ApiKeyCredentials.prototype.signRequest = function (webResource) {
         if (!webResource) {
@@ -93615,8 +94899,7 @@ var TopicCredentials = /** @class */ (function (_super) {
     /**
      * Creates a new EventGrid TopicCredentials object.
      *
-     * @constructor
-     * @param {string} topicKey   The EventGrid topic key
+     * @param topicKey - The EventGrid topic key
      */
     function TopicCredentials(topicKey) {
         var _this = this;
